@@ -28,7 +28,7 @@
     "express": "4.18.2",
     "json-parse-better-errors": "1.0.2",
     "lodash": "4.17.21",
-    "openai": "3.3.0"
+    "openai": "4.0.0"
   },
   "devDependencies": {
     "eslint": "8.43.0",
