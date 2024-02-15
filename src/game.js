@@ -60,6 +60,11 @@ process.on('SIGTERM', closeFiles);
 const loadGame = () => {
   log(`Loading games file: ${gameFileName}`);
   try {
+    if (!existsSync(gameFileName)) {
+      log('No games file found');
+      return {};
+    }
+
     return JSON.parse(readFileSync(gameFileName));
   } catch (e) {
     log('Failed to load games');
@@ -75,7 +80,7 @@ const games = loadGame();
  */
 const saveGame = () => {
   log(`Saving games file: ${gameFileName}`);
-  writeFileSync(gameFileName, JSON.stringify(games, null, 2));
+  writeFileSync(gameFileName, JSON.stringify(games, null, 2), { flag: 'w+' });
 };
 
 /**

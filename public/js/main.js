@@ -1,4 +1,4 @@
-const apiHost = `http://${location.host || 'localhost'}`;
+const apiHost = `${location.protocol}//${location.host || 'localhost'}`;
 
 const CONFETTI_ARGS = [
   {},
