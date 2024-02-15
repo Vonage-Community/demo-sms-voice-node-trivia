@@ -11,11 +11,11 @@ A fun trivia game using GPT to generate questions and Vonage API's to get help f
 - A Vonage Application that has numbers for receiving SMS and can make Phone calls
 - NGrok (if running locally)
 
-### Environment Variables 
+### Environment Variables
 
 Rename `env.dist` and fill in the correct environment variables
 
-- `PORT` Port to run webserver on 
+- `PORT` Port to run webserver on
 - `VONAGE_API_KEY` API Key
 - `VONAGE_API_SECRET` API Secret
 - `VONAGE_PRIVATE_KEY` The Private key for the application (should be the contents of the file)
@@ -28,7 +28,7 @@ Rename `env.dist` and fill in the correct environment variables
 
 ## Commands
 
-- `npm run start` Start the webserver 
+- `npm run start` Start the webserver
 - `npm run watch` Watch changes and restart the web server (use for dev)
 - `npm run livereload` Set up live reload (use for dev)
 
@@ -36,4 +36,4 @@ Rename `env.dist` and fill in the correct environment variables
 
 - Games will be written to a local file (`games.json`)
 - SMS Messages will be streamed into a file (`particpants.txt`)
-- When using the `Text the Audience` feature, the application will update the URLS for the Vonage Application
+- When using the `Text the Audience` feature, the application will update the URLS for the Vonage Application to include the game Id. This means that you cannot run two games at the same time using the same Vonage Application

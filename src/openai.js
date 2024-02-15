@@ -8,14 +8,16 @@ const log = debug('@vonage.openai');
 
 const openai = new OpenAIApi({
   apiKey: process.env.OPENAI_API_KEY,
+  timeout: 30000,
 });
 
 /**
  * Call chat GPT
+ * @param {string} messages
+ * @return {Promise<string>}
  */
 export const callGPT = async (
   messages,
-  timeout = 45000,
 ) => {
   log('Calling ChatGPT');
   try {
@@ -27,9 +29,6 @@ export const callGPT = async (
         temperature: 1.5,
         messages: messages,
         response_format: { type: 'json_object' },
-      },
-      {
-        timeout: timeout,
       },
     );
 

@@ -49,10 +49,10 @@ app.get('/games', catchAsync(async (req, res) => {
  * Create a game
  */
 app.post('/games', catchAsync(async (req, res) => {
-  const { title, categories } = req.body;
+  const { title, url, categories } = req.body;
   log(`Create game`);
 
-  const game = await createGame(title, categories);
+  const game = await createGame(title, url, categories);
   log('Created game', game);
 
   res.send(game);

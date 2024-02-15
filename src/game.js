@@ -38,7 +38,6 @@ const gameFileName = rootDir + '/games.json';
 const particapantFileName = rootDir + '/particapants.txt';
 
 const partStream = createWriteStream(particapantFileName, { flags: 'a' });
-const allowedLetters = ['A', 'B', 'C', 'D'];
 
 /**
  * Close all open file streams
@@ -203,9 +202,10 @@ const ask = async (game) => {
   log('Asking question');
 
   const { questions, messages } = game;
+  const currentPoint = pointScale[getPointIndex(game) + 1] || pointScale[0];
   messages.push({
     role: 'user',
-    content: 'Generate a question',
+    content: `Generate a question worth $${currentPoint} for me please.`,
   });
   log('Messages:', messages);
 
@@ -252,28 +252,35 @@ const pass = async (game) => {
  */
 const calculateScore = (game) => {
   log('Calculating score');
-  const pointIndex = game.questions.reduce(
-    (acc, { answered_correctly: answeredCorrectly, passed }) => {
-      if (passed) {
-        log('Question passed');
-        return acc;
-      }
-
-      if (!answeredCorrectly) {
-        log('Question not answered correctly');
-        return acc;
-      }
-
-      log('Question answered correctly');
-      acc++;
-      return acc;
-    },
-    -1,
-  );
+  const pointIndex = getPointIndex(game);
   log(`Point index ${pointIndex}`);
   game.score = pointIndex >= 0 ? pointScale[pointIndex] : 0;
   log(`New Score ${game.score}`);
 };
+
+/**
+ * Get the point index
+ * @param {Object} game The game
+ * @return {Number} The point index
+ **/
+const getPointIndex = (game) => game.questions.reduce(
+  (acc, { answered_correctly: answeredCorrectly, passed }) => {
+    if (passed) {
+      log('Question passed');
+      return acc;
+    }
+
+    if (!answeredCorrectly) {
+      log('Question not answered correctly');
+      return acc;
+    }
+
+    log('Question answered correctly');
+    acc++;
+    return acc;
+  },
+  -1,
+);
 
 /**
  * Answer the question
@@ -403,19 +410,38 @@ const processAudienceResponse = async (game, inboundStatus) => {
   const { text, from } = inboundStatus;
 
   let response = `Thanks for helping ${game?.player?.name || ''}`;
+
+  const allowedLetters = getLatestQuestion(game.questions).choices.map(
+    ({ letter, removed }) => !removed ? letter : null).filter(
+    (letter) => letter,
+  );
+
+  let letter = `${text}`.trim().substring(0, 1).toUpperCase();
+
   if (text.trim().length !== 1) {
     response = 'I\'m sorry, I didn\'t understand your message. '
-    + ' Please respond with a single letter choice.';
+    + `Please respond with only ${allowedLetters.join(', ')}.`;
+    letter = null;
   }
 
-  const letter = `${text}`.trim().substring(0, 1).toUpperCase();
+  if (letter && allowedLetters.includes(letter)) {
+    partStream.write(`${game.id},${from},${letter}\n`);
+  }
 
-  if (!allowedLetters.includes(letter)) {
+  if (letter && !allowedLetters.includes(letter)) {
     response = `I'm sorry but '${letter}' is not a valid choice. `
-    + `Please respond with ${allowedLetters.join(', ')}.`;
+    + `Please respond with only ${allowedLetters.join(', ')}.`;
   }
 
-  partStream.write(`${game.id},${from},${letter}\n`);
+  const removedLetters = getLatestQuestion(game.questions).choices.map(
+    ({ letter, removed }) => removed ? letter : null).filter(
+    (letter) => letter,
+  );
+
+  if (removedLetters.includes(letter)) {
+    response = `I'm sorry but Choice '${letter}' has been eliminated. `
+    + `Please respond with only ${allowedLetters.join(', ')}.`;
+  }
 
   const params = {
     from: FROM_NUMBER,
@@ -488,11 +514,15 @@ const countAudienceAnswers = (game) => {
 
 /**
  * Get the latest question
+ * @param {Array} questions The questions
+ * @return {Object} The latest question
  */
 const getLatestQuestion = (questions) => questions.slice(-1)[0];
 
 /**
  * Get the correct choice for the question
+ * @param {Array} questions The questions
+ * @return {Object} The correct choice
  */
 const getCorrectChoice = (questions) => {
   const latestQuestion = getLatestQuestion(questions);
@@ -504,6 +534,10 @@ const getCorrectChoice = (questions) => {
 
 /**
  * Easily Choose the helpline
+ *
+ * @param {Object} game The game
+ * @param {Object} which The helpline
+ * @return {Object} The game
  */
 const lifeLine = (game, { which }) => {
   switch (which) {
@@ -529,6 +563,7 @@ export const pointScale = [
  * Setup a game
  *
  * @param {String} title The title of the game
+ * @param {String} url The URL for the game
  * @param {Array} categories The categories for the game
  * @param {Array} questions The questions for the game
  * @param {Array} messages The messages for the game
@@ -537,6 +572,7 @@ export const pointScale = [
  */
 export const createGame = async (
   title,
+  url,
   categories,
   questions = [],
   messages = [],
@@ -557,6 +593,7 @@ export const createGame = async (
   const game = fillGame({
     id: makeId(8),
     title: title,
+    url: url,
     categories: categories,
     questions: questions,
     messages: messages,
@@ -584,7 +621,8 @@ export const createGame = async (
       + categories.join(', ')
       + `. Return the questions as a JSON array following this schema: `
       + JSON.stringify(questionSchema)
-      + `. When you want to use a blank in a question, use <blank>`,
+      + `. When you want to use a blank in a question, use <blank>.`
+      + `There should always be 4 choices and 1 correct answer.`,
   });
 
   games[game.id] = game;

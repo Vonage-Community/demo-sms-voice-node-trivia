@@ -29,9 +29,14 @@ const loadGames = async () => {
     .then((res) => res.json())
     .then((games) => Promise.resolve((() => {
       console.log(`Games loaded`, games);
+      clearGame();
       displayGames(games);
       return games;
     })()));
+};
+
+const clearGameList = () => {
+  getGameListSection().classList.add('d-none');
 };
 
 const displayGames = (games) => {
@@ -40,7 +45,8 @@ const displayGames = (games) => {
 
   const listBody = getGameListTableBody();
   listBody.innerHTML = '';
-
+  clearGame();
+  clearGameForm();
 
   for (const [id, game] of Object.entries(games)) {
     const row = getGameRow().content.cloneNode(true);
@@ -77,12 +83,18 @@ const addCategory = (event) => {
   categoryInput.attributes;
 };
 
+const clearGameForm = () => {
+  getGameForm().reset();
+  getGameFormSection().classList.add('d-none');
+};
+
 const submitForm = async () => {
   console.log('Submit Form');
   const gameForm = getGameForm();
   const data = new FormData(gameForm);
   const newGame = {
     title: null,
+    url: null,
     categories: [],
   };
 
@@ -113,8 +125,7 @@ const submitForm = async () => {
   )
     .then((res) => res.json())
     .then((game) => Promise.resolve((() => {
-      getGameForm().reset();
-      getGameFormSection().classList.add('d-none');
+      clearGameForm();
       loadGames();
       // eslint-disable-next-line
       Toastify({
@@ -127,6 +138,8 @@ const submitForm = async () => {
 
 const createGame = () => {
   console.log('Create Game');
+  clearGame();
+  clearGameList();
   const gameFormSection = getGameFormSection();
   gameFormSection.classList.remove('d-none');
 };
@@ -312,16 +325,13 @@ const buildQuestionElement = () => {
   console.log('We Have a question');
 
   const questionTemplate = document.getElementById('question_template');
-  console.log(questionTemplate);
   const questionElement = questionTemplate.content.cloneNode(true);
 
   questionElement
     .querySelector('* .question-text')
     .innerText = question.question;
 
-
   const choices = questionElement.querySelectorAll('button.choice');
-  console.log(choices);
 
   //  getAskButton().classList.add('d-none');
   const totalRespondants = question.choices.reduce(
@@ -391,6 +401,8 @@ const getGameForm = () => getGameFormSection().querySelector('form');
 
 const getGamePlayer = () => getGameSection().querySelector('h2');
 
+const needGameElements = () => document.querySelectorAll('.need-game');
+
 const getAskButton = () => getChoicesSection()
   .querySelector('button.ask');
 
@@ -423,6 +435,9 @@ const getCurrentScore = () => getCurrentGame()?.score;
 const getGameQuestions = () => getCurrentGame()?.questions || [];
 
 const getLatestQuestion = () => getGameQuestions().slice(-1)[0];
+
+const getChoice = (which) => getLatestQuestion()?.choices
+  .find(({ letter }) => letter === which);
 
 const getPointScale = () => getCurrentGame()?.point_scale || [];
 
@@ -464,6 +479,28 @@ const displayScore = () => {
   });
 };
 
+const disableGameOptions = () => {
+  needGameElements().forEach((element) => {
+    element.disabled = true;
+    element.classList.add('disabled');
+  });
+};
+
+const enableGameOptions = () => {
+  needGameElements().forEach((element) => {
+    element.disabled = false;
+    element.classList.remove('disabled');
+  });
+};
+
+const clearGame = () => {
+  getGameSection().innerHTML = '';
+  const url = new URL(window.location.href);
+  url.searchParams.delete('playGame');
+  window.history.pushState({ path: url.href }, document.title, url.href);
+  disableGameOptions();
+};
+
 const playGame = async (gameId) => {
   console.log(`Playing game: ${gameId}`);
   const gameTemplate = document.getElementById('game_template');
@@ -471,6 +508,7 @@ const playGame = async (gameId) => {
 
   const game = await fetchGame(gameId);
 
+  enableGameOptions();
   getGameSection().appendChild(gameClone);
   getGamePlayer().innerText = `Player: ${game?.player?.name || ''}`;
   displayScore();
@@ -484,15 +522,19 @@ const playGame = async (gameId) => {
   const qrcode = new QRCode(
     numberCell,
   );
-  qrcode.makeCode('https://airtable.com/apprT3ianGAMilmoh/shr03tlR2ZCHcFmYA');
+  qrcode.makeCode(game.url);
   numbersElement.innerHTML = '';
 
   numbers?.forEach(({ countryName, country, number }) => {
     const row = document.createElement('div');
     const countryCell = document.createElement('div');
-    countryCell.innerText = countryName || country;
 
+    countryCell.innerText = countryName || country || '';
     row.appendChild(countryCell);
+
+    const flag = new CountryFlag(countryCell);
+    flag.selectByAlpha2(`${country}`.toLowerCase());
+
 
     const numberCell = document.createElement('div');
     const qrcode = new QRCode(
@@ -611,7 +653,6 @@ const dialPlayer = async () => {
   console.log(`JWT token ${jwt}`);
 
   const { player } = getCurrentGame();
-  console.log(player);
   document.getElementById('open_call').click();
 
   console.log(getCallerElement());
@@ -624,7 +665,7 @@ const endCall = async () => {
     return;
   }
 
-  window.call.hangUp();
+  window.call?.hangUp();
   window.call = null;
 };
 
@@ -688,6 +729,12 @@ const handelButtonClickEvent = (event) => {
   if (target.classList.contains('add-category')) {
     console.log('Add category clicked');
     addCategory(event);
+    return;
+  }
+
+  if (target.classList.contains('list-games')) {
+    console.log('List clicked');
+    loadGames();
     return;
   }
 
@@ -791,14 +838,24 @@ const showAudienceResponses = () => {
 
   const profileElement = document.getElementById('audience_profiles');
   const questionElement = buildQuestionElement();
+  const question = getLatestQuestion();
 
+  console.log(question.choices);
   questionElement.querySelector('button.ask').classList.add('d-none');
   questionElement.querySelector('button.answer').classList.add('d-none');
 
   const choices = questionElement.querySelectorAll('button.choice');
 
   // eslint-disable-next-line
-  for (const [index, element] of choices.entries()) {
+  for (const [_, element] of choices.entries()) {
+    const { choice } = element.dataset;
+    const choiceData = getChoice(choice);
+
+    if (choiceData.removed) {
+      element.classList.add('d-none');
+      continue;
+    }
+
     element.classList.remove(
       'selected-choice',
       'btn-info',
@@ -819,6 +876,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.jsConfetti = new JSConfetti();
 
   document.addEventListener('click', handelButtonClickEvent);
+  disableGameOptions();
 
   if (gameId) {
     playGame(gameId);
