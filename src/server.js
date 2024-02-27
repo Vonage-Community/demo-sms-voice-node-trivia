@@ -14,7 +14,7 @@ const rootDir = path.dirname(path.dirname(import.meta.url)).replace(
 );
 
 const app = new Express();
-const port = process.env.PORT || process.env.NERU_APP_PORT || 3000;
+const port = process.env.PORT || process.env.VCR_PORT || 3000;
 
 const catchAsync = (fn) => (req, res, next) => {
   fn(req, res, next).catch(next);

@@ -1,0 +1,31 @@
+project:
+  name: trivia-game
+instance:
+  name: trivia-game
+  runtime: nodejs18
+  application-id:
+  entrypoint: [node, src/server.js]
+  capabilities:
+    - voice
+    - messages-v1
+  environment:
+    - name: OPENAI_API_KEY
+      secret: OPENAI_API_KEY
+    - name: AT_BASE_ID
+      secret: AT_BASE_ID
+    - name: AT_TABLE_ID
+      secret: AT_TABLE_ID
+    - name: AIRTABLE_TOKEN
+      secret: AIRTABLE_TOKEN
+    - name: FROM_NUMBER
+      value:
+    - name: DEBUG
+      value: '*'
+  secrets:
+    - OPENAI_API_KEY
+    - AT_TABLE_ID
+    - AT_BASE_ID
+    - AIRTABLE_TOKEN
+debug:
+  name: debug
+  entrypoint: [nodemon, --inspect, src/server.js]

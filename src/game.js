@@ -17,12 +17,12 @@ const log = debug('@vonage.game.engine');
 
 const privateKey = existsSync(process.env.VONAGE_PRIVATE_KEY)
   ? readFileSync(process.env.VONAGE_PRIVATE_KEY)
-  : process.env.VONAGE_PRIVATE_KEY;
+  : process.env.VONAGE_PRIVATE_KEY || process.env.VCR_PRIVATE_KEY;
 
 const APIAuth = new Auth({
-  apiKey: process.env.VONAGE_API_KEY,
-  apiSecret: process.env.VONAGE_API_SECRET,
-  applicationId: process.env.VONAGE_APPLICATION_ID,
+  apiKey: process.env.VONAGE_API_KEY || process.env.VCR_ACCOUNT_ID,
+  apiSecret: process.env.VONAGE_API_SECRET || process.env.VCR_ACCOUNT_SECRET,
+  applicationId: process.env.VONAGE_APPLICATION_ID || process.env.VCR_API_APPLICATION_ID,
   privateKey: privateKey,
 });
 
