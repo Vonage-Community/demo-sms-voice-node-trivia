@@ -1,9 +1,14 @@
 {
-  "name": "@vonage/wwtbav",
+  "name": "@vonage/rise-to-the-top",
   "private": true,
-  "description": "Who wants to be a Vonage Millionare",
+  "description": "Vonage Rise to the Top trivia game",
   "license": "Apache-2.0",
-  "author": "Chuck \"MANCHUCK\" Reeves <chuck@manchuck.com>",
+"contributors": [
+    {
+      "name": "Chuck \"MANCHUCK\" Reeves",
+      "url": "https://github.com/manchuck"
+    }
+  ],
   "main": "index.js",
   "scripts": {
     "lint": "node_modules/.bin/eslint src/ public/js",
@@ -16,26 +21,23 @@
   },
   "type": "module",
   "dependencies": {
-    "@koa/router": "12.0.0",
-    "@vonage/auth": "1.4.0",
-    "@vonage/messages": "1.6.0",
-    "@vonage/server-sdk": "3.6.0",
-    "@vonage/voice": "1.5.0",
-    "airtable": "0.12.1",
+    "@vonage/auth": "1.9.1",
+    "@vonage/jwt": "1.9.1",
+    "@vonage/messages": "1.12.1",
+    "@vonage/server-sdk": "3.13.1",
+    "airtable": "0.12.2",
     "debug": "4.3.4",
-    "dotenv": "16.3.1",
-    "ejs": "3.1.9",
-    "express": "4.18.2",
+    "dotenv": "16.4.5",
+    "express": "4.18.3",
     "json-parse-better-errors": "1.0.2",
     "lodash": "4.17.21",
-    "openai": "4.28.0"
+    "openai": "4.28.4"
   },
   "devDependencies": {
-    "eslint": "8.43.0",
+    "eslint": "8.57.0",
     "eslint-config-google": "0.14.0",
-    "eslint-plugin-deprecation": "1.4.1",
+    "eslint-plugin-deprecation": "2.0.0",
     "eslint-plugin-lodash": "7.4.0",
-    "eslint-plugin-prettier": "4.2.1",
-    "open": "9.1.0"
+    "eslint-plugin-prettier": "5.1.3"
   }
 }

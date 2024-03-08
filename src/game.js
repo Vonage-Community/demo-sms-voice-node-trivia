@@ -638,8 +638,31 @@ export const createGame = async (
   });
 
   games[game.id] = game;
+  await createGameVoiceUser(game);
   saveGame();
   return game;
+};
+
+const createGameVoiceUser = async () => {
+  log('Creating user for voice calls');
+  try {
+    for await (const user of vonage.users.listAllUsers({ name: 'game_user' })) {
+      log('User exists', user);
+      return;
+    }
+  } catch (error) {
+    if (error.response?.status !== 404) {
+      log('Failed to list users', error);
+      throw error;
+    }
+
+    log('User does not exist');
+  }
+
+  log('Creating user');
+  await vonage.users.createUser({
+    name: 'game_user',
+  });
 };
 
 const findPlayer = async (game) => {
