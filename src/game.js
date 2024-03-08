@@ -13,16 +13,21 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// enable debug for all when running in VCR remove this when VCR updates
+// variable
+process.env.VCR_PORT && debug.enable('@vonage.game.engine');
 const log = debug('@vonage.game.engine');
+
+log('loading private key');
 
 const privateKey = existsSync(process.env.VONAGE_PRIVATE_KEY)
   ? readFileSync(process.env.VONAGE_PRIVATE_KEY)
   : process.env.VONAGE_PRIVATE_KEY || process.env.VCR_PRIVATE_KEY;
 
 const APIAuth = new Auth({
-  apiKey: process.env.VONAGE_API_KEY || process.env.VCR_ACCOUNT_ID,
-  apiSecret: process.env.VONAGE_API_SECRET || process.env.VCR_ACCOUNT_SECRET,
-  applicationId: process.env.VONAGE_APPLICATION_ID || process.env.VCR_API_APPLICATION_ID,
+  apiKey: process.env.VONAGE_API_KEY || process.env.VCR_API_ACCOUNT_ID,
+  apiSecret: process.env.VONAGE_API_SECRET || process.env.VCR_API_ACCOUNT_SECRET,
+  applicationId: process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
   privateKey: privateKey,
 });
 
@@ -30,9 +35,11 @@ const FROM_NUMBER = process.env.FROM_NUMBER;
 
 const vonage = new Vonage(APIAuth);
 
-const rootDir = path
-  .dirname(path.dirname(import.meta.url))
-  .replace('file://', '');
+const rootDir = process.env.VCR_PORT
+  ? '/tmp'
+  : path
+    .dirname(path.dirname(import.meta.url))
+    .replace('file://', '');
 
 const gameFileName = rootDir + '/games.json';
 const particapantFileName = rootDir + '/particapants.txt';
@@ -91,12 +98,12 @@ const saveGame = () => {
  */
 const getGameNumbers = async (game) => {
   const numbers = await vonage.numbers.getOwnedNumbers({
-    applicationId: process.env.VONAGE_APPLICATION_ID,
+    applicationId: process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
   });
 
   log(numbers);
-  game.numbers =await Promise.all(
-    numbers?.numbers.map(
+  game.numbers = await Promise.all(
+    numbers?.numbers?.map(
       ({ country, msisdn }) => vonage.numberInsights.basicLookup(msisdn)
       // eslint-disable-next-line
         .then(({ country_name, country_prefix, national_format_number }) => ({
@@ -122,7 +129,7 @@ const getGameNumbers = async (game) => {
 const updateGameUrls = async (gameId) => {
   log(`Updating app for game ${gameId}`);
   const currentAppSettings = await vonage.applications.getApplication(
-    process.env.VONAGE_APPLICATION_ID,
+    process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
   );
 
   log(`current settings`, currentAppSettings);
@@ -317,7 +324,7 @@ const answer = async (game, { letterChoice }) => {
  */
 const getJwt = (game) => {
   game.jwt = tokenGenerate(
-    process.env.VONAGE_APPLICATION_ID,
+    process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
     privateKey,
     {
       sub: 'game_user',

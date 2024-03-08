@@ -661,7 +661,7 @@ const dialPlayer = async () => {
 };
 
 const endCall = async () => {
-  if (!window.call) {
+  if (!window.call?.hangUp) {
     return;
   }
 

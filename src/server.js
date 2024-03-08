@@ -4,6 +4,10 @@ import path from 'path';
 import { createGame, getGame, getAllGames } from './game.js';
 import debug from 'debug';
 
+// enable debug for all when running in VCR remove this when VCR updates
+// variable
+process.env.VCR_PORT && debug.enable('*vonage*');
+
 const log = debug('@vonage.game.server');
 
 dotenv.config();
@@ -25,6 +29,7 @@ app.use(Express.json());
 
 app.get('/_/health', (req, res) => {
   res.status(200);
+  res.send('OK');
 });
 
 /**

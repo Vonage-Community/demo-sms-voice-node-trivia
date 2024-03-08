@@ -3,6 +3,7 @@ import Airtable from 'airtable';
 import debug from 'debug';
 
 dotenv.config();
+
 const log = debug('@vonage.game.airtable');
 
 const AT_BASE_ID = process.env.AT_BASE_ID;
@@ -12,6 +13,7 @@ const AT_FIELDS = {
   PHONE: 'Phone',
 };
 
+log('Airtable', AT_BASE_ID, AT_TABLE_ID, AT_FIELDS);
 const airtable = new Airtable({
   apiKey: process.env.AIRTABLE_TOKEN,
 });
