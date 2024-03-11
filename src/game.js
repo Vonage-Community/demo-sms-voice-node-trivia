@@ -1,14 +1,19 @@
 import { callGPT } from './openai.js';
 import _ from 'lodash';
-import path from 'path';
-import { existsSync, createWriteStream, readFileSync, writeFileSync } from 'fs';
 import debug from 'debug';
 import parseJson from 'json-parse-better-errors';
-import { Vonage } from '@vonage/server-sdk';
-import { SMS } from '@vonage/messages';
-import { Auth } from '@vonage/auth';
-import { tokenGenerate } from '@vonage/jwt';
+import {
+  getJwt,
+  createGameVoiceUser,
+  sendMessage,
+  getGameNumbers,
+} from './vonage.js';
 import { getAirtableSignups } from './airtable.js';
+
+import {
+  saveGame,
+  fetchGame,
+} from './mongo.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -17,141 +22,6 @@ dotenv.config();
 // variable
 process.env.VCR_PORT && debug.enable('@vonage.game.engine');
 const log = debug('@vonage.game.engine');
-
-log('loading private key');
-
-const privateKey = existsSync(process.env.VONAGE_PRIVATE_KEY)
-  ? readFileSync(process.env.VONAGE_PRIVATE_KEY)
-  : process.env.VONAGE_PRIVATE_KEY || process.env.VCR_PRIVATE_KEY;
-
-const APIAuth = new Auth({
-  apiKey: process.env.VONAGE_API_KEY || process.env.VCR_API_ACCOUNT_ID,
-  apiSecret: process.env.VONAGE_API_SECRET || process.env.VCR_API_ACCOUNT_SECRET,
-  applicationId: process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
-  privateKey: privateKey,
-});
-
-const FROM_NUMBER = process.env.FROM_NUMBER;
-
-const vonage = new Vonage(APIAuth);
-
-const rootDir = process.env.VCR_PORT
-  ? '/tmp'
-  : path
-    .dirname(path.dirname(import.meta.url))
-    .replace('file://', '');
-
-const gameFileName = rootDir + '/games.json';
-const particapantFileName = rootDir + '/particapants.txt';
-
-const partStream = createWriteStream(particapantFileName, { flags: 'a' });
-
-/**
- * Close all open file streams
- */
-const closeFiles = () => {
-  log('Closing files');
-  partStream.end();
-  log('Flies closed');
-  process.exit(0);
-};
-
-process.on('SIGINT', closeFiles);
-process.on('SIGTERM', closeFiles);
-
-/**
- * Load games from the file
- *
- * @return {Object} The games
- */
-const loadGame = () => {
-  log(`Loading games file: ${gameFileName}`);
-  try {
-    if (!existsSync(gameFileName)) {
-      log('No games file found');
-      return {};
-    }
-
-    return JSON.parse(readFileSync(gameFileName));
-  } catch (e) {
-    log('Failed to load games');
-    log(e);
-    return {};
-  }
-};
-
-const games = loadGame();
-
-/**
- * Save the game file
- */
-const saveGame = () => {
-  log(`Saving games file: ${gameFileName}`);
-  writeFileSync(gameFileName, JSON.stringify(games, null, 2), { flag: 'w+' });
-};
-
-/**
- * Get the phone numbers linked to the vonage application
- *
- * @param {Object} game The gam
- * @return {Object} The numbers
- */
-const getGameNumbers = async (game) => {
-  const numbers = await vonage.numbers.getOwnedNumbers({
-    applicationId: process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
-  });
-
-  log(numbers);
-  game.numbers = await Promise.all(
-    numbers?.numbers?.map(
-      ({ country, msisdn }) => vonage.numberInsights.basicLookup(msisdn)
-      // eslint-disable-next-line
-        .then(({ country_name, country_prefix, national_format_number }) => ({
-          country: country,
-          // eslint-disable-next-line
-          countryName: country_name,
-          msisdn: msisdn,
-          // eslint-disable-next-line
-          number: `+${country_prefix} ${national_format_number}`,
-        })),
-    ),
-  );
-
-  return numbers;
-};
-
-/**
- * Update the Inbound and Status URL's for the application
- *
- * @param {String} gameId The game ID
- * @return {Promise} The promise
- */
-const updateGameUrls = async (gameId) => {
-  log(`Updating app for game ${gameId}`);
-  const currentAppSettings = await vonage.applications.getApplication(
-    process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
-  );
-
-  log(`current settings`, currentAppSettings);
-  const messagesUrl = new URL(
-    currentAppSettings.capabilities.messages.webhooks.inboundUrl.address,
-  );
-
-  const statusUrl = new URL(
-    currentAppSettings.capabilities.messages.webhooks.statusUrl.address,
-  );
-
-  messagesUrl.pathname = `/inbound/${gameId}`;
-  statusUrl.pathname = `/status/${gameId}`;
-
-  currentAppSettings.capabilities.messages.webhooks.inboundUrl.address
-    = messagesUrl.href;
-
-  currentAppSettings.capabilities.messages.webhooks.statusUrl.address
-    = statusUrl.href;
-
-  await vonage.applications.updateApplication(currentAppSettings);
-};
 
 /**
  * Create an ID
@@ -190,8 +60,6 @@ const parseQuestion = (messages, content) => {
     content: content,
   });
 
-  saveGame();
-
   try {
     const parsed = parseJson(content);
     log(parsed);
@@ -228,7 +96,9 @@ const ask = async (game) => {
     answered: false,
     answered_correctly: false,
     passed: false,
+    audience_choice: 0,
   };
+
   log('Question:', question);
 
   question.choices = question.choices.map((choice) => ({
@@ -239,6 +109,7 @@ const ask = async (game) => {
   }));
 
   questions.push(question);
+  saveGame(game);
   return getCurrentQuestion(questions);
 };
 
@@ -253,7 +124,7 @@ const pass = async (game) => {
   getCurrentQuestion(game.questions).passed = true;
   const nextQuestion = await ask(game);
   calculateScore(game);
-  saveGame();
+  await saveGame(game);
   return nextQuestion;
 };
 
@@ -314,37 +185,7 @@ const answer = async (game, { letterChoice }) => {
     calculateScore(game);
   }
 
-  saveGame();
-};
-
-/**
- * Generate a JWT token for the game
- *
- * @param {Object} game The game
- */
-const getJwt = (game) => {
-  game.jwt = tokenGenerate(
-    process.env.VONAGE_APPLICATION_ID || process.env.API_APPLICATION_ID,
-    privateKey,
-    {
-      sub: 'game_user',
-      acl: {
-        'paths': {
-          '/*/users/**': {},
-          '/*/conversations/**': {},
-          '/*/sessions/**': {},
-          '/*/devices/**': {},
-          '/*/image/**': {},
-          '/*/media/**': {},
-          '/*/applications/**': {},
-          '/*/push/**': {},
-          '/*/knocking/**': {},
-          '/*/legs/**': {},
-        },
-      },
-    },
-  );
-  saveGame();
+  await saveGame(game);
 };
 
 /**
@@ -353,13 +194,13 @@ const getJwt = (game) => {
  * @param {Object} game The game
  */
 const phoneADev = async (game) => {
-  log('Phone a friend', game);
+  log('Phone a friend');
   game.life_lines.phone_a_dev = true;
-  getJwt(game);
+  game.jwt = getJwt();
   await getAirtableSignups(game);
 
   game.dad = game.particapants.sort(() => 0.5 - Math.random())[0];
-  saveGame();
+  await saveGame(game);
 };
 
 /**
@@ -392,7 +233,7 @@ const narrowItDown = async (game) => {
   log(latestQuestion);
 
   game.life_lines.narrow_it_down = true;
-  saveGame();
+  await saveGame(game);
 };
 
 /**
@@ -401,13 +242,10 @@ const narrowItDown = async (game) => {
  * @return {Object} The game
  */
 const textTheAudience = async (game) => {
-  log('Text The Audience', game);
+  log('Text The Audience');
   game.life_lines.text_the_audience = true;
 
-  await updateGameUrls(game.id);
-  await getGameNumbers(game);
-
-  saveGame();
+  saveGame(game);
   return game;
 };
 
@@ -437,7 +275,11 @@ const processAudienceResponse = async (game, inboundStatus) => {
   }
 
   if (letter && allowedLetters.includes(letter)) {
-    partStream.write(`${game.id},${from},${letter}\n`);
+    updateAudienceChoice(
+      game.id,
+      getLatestQuestion(game.questions).id,
+      letter,
+    );
   }
 
   if (letter && !allowedLetters.includes(letter)) {
@@ -455,73 +297,7 @@ const processAudienceResponse = async (game, inboundStatus) => {
     + `Please respond with only ${allowedLetters.join(', ')}.`;
   }
 
-  const params = {
-    from: FROM_NUMBER,
-    to: from,
-    text: response,
-  };
-
-  log('Sending message', params);
-
-  return vonage.messages.send(new SMS(params))
-    .catch((err) => {
-      log(`Error when sending message`, err.response?.data);
-    });
-};
-
-/**
- * Parse the SMS file
- *
- * @param {Object} game The game
- * @return {Object} The game
- */
-const countAudienceAnswers = (game) => {
-  log(game);
-  const answerLines = readFileSync(particapantFileName);
-  const counted = answerLines
-    .toString()
-    .split('\n')
-    .reduce((acc, line) => {
-      log(`Line: ${line}`);
-      const [gameId, fromNumber, answer] = line.split(',');
-      if (!gameId) {
-        return acc;
-      }
-
-      if (!acc[gameId]) {
-        acc[gameId] = {};
-      }
-
-      if (answer && !acc[gameId][answer]) {
-        acc[gameId][answer] = new Set();
-      }
-
-      if (answer) {
-        acc[gameId][answer].add(fromNumber);
-      }
-
-      return acc;
-    }, {});
-
-  log(`Counted`, counted);
-
-  const { choices } = getLatestQuestion(game.questions);
-
-  choices.forEach((choice) => {
-    const { letter } = choice;
-    if (!counted[game.id]) {
-      return;
-    }
-
-    if (counted[game.id][letter]) {
-      choice.audience_choice = counted[game.id][letter].size;
-    }
-  });
-
-  log(game);
-
-  saveGame();
-  return game;
+  await sendMessage(from, response);
 };
 
 /**
@@ -586,8 +362,6 @@ export const createGame = async (
   title,
   url,
   categories,
-  questions = [],
-  messages = [],
 ) => {
   log(`Creating new game ${title}`, categories);
 
@@ -607,8 +381,8 @@ export const createGame = async (
     title: title,
     url: url,
     categories: categories,
-    questions: questions,
-    messages: messages,
+    questions: [],
+    messages: [],
     point_scale: pointScale,
     score: 0,
     over: false,
@@ -621,8 +395,7 @@ export const createGame = async (
     },
   });
 
-  await getGameNumbers(game);
-  messages.push({
+  game.messages.push({
     role: 'system',
     content:
       `You are a helpful AI assistant. `
@@ -637,32 +410,10 @@ export const createGame = async (
       + `There should always be 4 choices and 1 correct answer.`,
   });
 
-  games[game.id] = game;
+  await getGameNumbers(game);
   await createGameVoiceUser(game);
-  saveGame();
+  await saveGame(game);
   return game;
-};
-
-const createGameVoiceUser = async () => {
-  log('Creating user for voice calls');
-  try {
-    for await (const user of vonage.users.listAllUsers({ name: 'game_user' })) {
-      log('User exists', user);
-      return;
-    }
-  } catch (error) {
-    if (error.response?.status !== 404) {
-      log('Failed to list users', error);
-      throw error;
-    }
-
-    log('User does not exist');
-  }
-
-  log('Creating user');
-  await vonage.users.createUser({
-    name: 'game_user',
-  });
 };
 
 const findPlayer = async (game) => {
@@ -670,7 +421,7 @@ const findPlayer = async (game) => {
 
   log('setting player');
   game.player = game.particapants.sort(() => 0.5 - Math.random())[0];
-  saveGame();
+  saveGame(game);
   return game;
 };
 
@@ -692,7 +443,6 @@ const fillGame = (game) =>
     getJwt: _.partial(getJwt, game),
     lifeLine: _.partial(lifeLine, game),
     processAudienceResponse: _.partial(processAudienceResponse, game),
-    countAudienceAnswers: _.partial(countAudienceAnswers, game),
   });
 
 /**
@@ -701,17 +451,9 @@ const fillGame = (game) =>
  * @param {String} gameId The game ID
  * @return {Object} The game
  */
-export const getGame = (gameId) => {
-  if (!games[gameId]) {
-    throw new Error('Game not found');
-  }
-
-  return fillGame(games[gameId]);
+export const getGame = async (gameId) => {
+  const game = await fetchGame(gameId);
+  log('Filling game');
+  return fillGame(game);
 };
 
-/**
- * Return all the games
- *
- * @return {Array} The games
- */
-export const getAllGames = () => games;

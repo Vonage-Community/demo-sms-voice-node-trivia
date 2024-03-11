@@ -99,6 +99,7 @@ const submitForm = async () => {
   };
 
   for (const [name, value] of data.entries()) {
+    console.log(name, value);
     if (!value) {
       continue;
     }
@@ -111,7 +112,7 @@ const submitForm = async () => {
     newGame[name] = value;
   }
 
-  console.log(newGame);
+  console.log('New Game', newGame);
 
   const headers = new Headers();
   headers.append('Content-Type', 'application/json');
@@ -820,7 +821,7 @@ const pollAudienceStatus = () => {
   window.audiencePollId = setInterval(
     () => {
       console.log('Counting status');
-      makeRPCCall('count_answers').then(showAudienceResponses);
+      makeRPCCall('load_game').then(showAudienceResponses);
     },
     1000,
   );
@@ -829,7 +830,7 @@ const pollAudienceStatus = () => {
     .addEventListener('hide.bs.modal', () => {
       console.log('Modal closing');
       clearInterval(window.audiencePollId);
-      makeRPCCall('count_answers').then(displayQuestion);
+      makeRPCCall('load_game').then(displayQuestion);
     });
 };
 

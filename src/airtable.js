@@ -13,7 +13,6 @@ const AT_FIELDS = {
   PHONE: 'Phone',
 };
 
-log('Airtable', AT_BASE_ID, AT_TABLE_ID, AT_FIELDS);
 const airtable = new Airtable({
   apiKey: process.env.AIRTABLE_TOKEN,
 });

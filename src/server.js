@@ -1,7 +1,10 @@
 import Express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
-import { createGame, getGame, getAllGames } from './game.js';
+import { createGame, getGame } from './game.js';
+import { loadGames } from './mongo.js';
+import { Voice, Messages, vcr } from '@vonage/vcr-sdk';
+import { getVCRPort, isVCR } from './vcr.js';
 import debug from 'debug';
 
 // enable debug for all when running in VCR remove this when VCR updates
@@ -12,13 +15,56 @@ const log = debug('@vonage.game.server');
 
 dotenv.config();
 
+let activeGameId;
+const processMessage = async (req, res) => {
+  const body = req.body;
+  log(`Inbound SMS ${activeGameId}`, body);
+  if (activeGameId) {
+    const game = await getGame(activeGameId);
+    game.processAudienceResponse(body);
+  }
+
+  res.status(200).json({ status: 'accepted' });
+};
+
+const processStatus = async (req, res) => {
+  const body = req.body;
+  log(`Status ${activeGameId}`, body);
+
+  res.status(200).json({ status: 'accepted' });
+};
+
+const startVCR = async () => {
+  if (!isVCR()) {
+    log('Not running in VCR');
+    return;
+  }
+
+  const vonageNumber = { type: null, number: null };
+  const from = { type: null, number: null };
+
+  try {
+    log('Starting VCR');
+    const session = vcr.createSession();
+    const voice = new Voice(session);
+    const messaging = new Messages(session);
+
+    await voice.onCall('onCall');
+    await messaging.onMessage('onMessage', from, vonageNumber);
+    await messaging.onMessageEvent('onEvent', from, vonageNumber);
+  } catch (error) {
+    log('Error', error);
+  }
+};
+
+
 const rootDir = path.dirname(path.dirname(import.meta.url)).replace(
   'file://',
   '',
 );
 
 const app = new Express();
-const port = process.env.PORT || process.env.VCR_PORT || 3000;
+const port = getVCRPort() || 3000;
 
 const catchAsync = (fn) => (req, res, next) => {
   fn(req, res, next).catch(next);
@@ -27,7 +73,7 @@ const catchAsync = (fn) => (req, res, next) => {
 app.use(Express.static(rootDir + '/public'));
 app.use(Express.json());
 
-app.get('/_/health', (req, res) => {
+app.get('/_/health', (_, res) => {
   res.status(200);
   res.send('OK');
 });
@@ -35,7 +81,7 @@ app.get('/_/health', (req, res) => {
 /**
  * Return the home page
  */
-app.get('/', catchAsync(async (req, res) => {
+app.get('/', catchAsync(async (_, res) => {
   log('Home Page');
   res.sendFile(`${rootDir}/public/index.html`);
 }));
@@ -43,9 +89,9 @@ app.get('/', catchAsync(async (req, res) => {
 /**
  * List all games
  */
-app.get('/games', catchAsync(async (req, res) => {
-  const games = getAllGames();
-  log('Games', games);
+app.get('/games', catchAsync(async (_, res) => {
+  log('List games');
+  const games = await loadGames();
 
   res.send(games);
 }));
@@ -58,7 +104,7 @@ app.post('/games', catchAsync(async (req, res) => {
   log(`Create game`);
 
   const game = await createGame(title, url, categories);
-  log('Created game', game);
+  log('Game created');
 
   res.send(game);
 }));
@@ -70,8 +116,8 @@ app.get('/games/:gameId', catchAsync(async (req, res) => {
   const { gameId } = req.params;
   log(`Getting game: ${gameId}`);
 
-  const game = getGame(gameId);
-  log(`Game`, game);
+  const game = await getGame(gameId);
+  log('Game loaded');
 
   res.send(game);
 }));
@@ -81,13 +127,18 @@ app.get('/games/:gameId', catchAsync(async (req, res) => {
  */
 app.put('/games/:gameId', catchAsync(async (req, res) => {
   const { gameId } = req.params;
+  activeGameId = gameId;
   const { method, parameters, id } = req.body;
   log(`RPC call for game: ${gameId}`, req.body);
 
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   log(`RPC Method: ${method}`);
 
   switch (method) {
+  case 'load_game':
+    // Adding this method to allow loading of the game
+    break;
+
   case 'call_player':
     await game.getJwt();
     break;
@@ -108,10 +159,6 @@ app.put('/games/:gameId', catchAsync(async (req, res) => {
     await game.pass(parameters);
     break;
 
-  case 'count_answers':
-    await game.countAudienceAnswers(parameters);
-    break;
-
   case 'answer':
     await game.answer(parameters);
     break;
@@ -124,36 +171,20 @@ app.put('/games/:gameId', catchAsync(async (req, res) => {
   });
 }));
 
+
 /**
  * Inbound listen for SMS messages
  */
-app.all('/inbound/:gameId?', catchAsync(async (req, res) => {
-  const body = req.body;
-  const { gameId } = req.params;
-  log(`Inbound SMS ${gameId}`, body);
-  if (gameId) {
-    const game = getGame(gameId);
-    game.processAudienceResponse(body);
-  }
-
-  res.status(200).json({ status: 'accepted' });
-}));
+app.all('/inbound', catchAsync(processMessage));
+app.all('/onMessage', catchAsync(processMessage));
 
 /**
  * Status Listener
  */
-app.all('/status/:gameId?', catchAsync(async (req, res) => {
-  const body = req.body;
-  const { gameId } = req.params;
-  log(`Status ${gameId}`, body);
+app.all('/status', catchAsync(processStatus));
+app.all('/onStatus', catchAsync(processStatus));
 
-  res.status(200).json({ status: 'accepted' });
-}));
-
-/**
- * Handle voice answer
- */
-app.all('/voice/answer', (req, res) => {
+const answerCall = (req, res) => {
   log('Answer: ', req.body);
   let ncco = [
     {
@@ -179,7 +210,13 @@ app.all('/voice/answer', (req, res) => {
   }
   log('NCCO', JSON.stringify(ncco, null, 2));
   res.json(ncco);
-});
+};
+
+/**
+ * Handle voice answer
+ */
+app.all('/voice/answer', answerCall);
+app.all('onCall', answerCall);
 
 /**
  * Handle voice events
@@ -200,7 +237,7 @@ app.all('/voice/fallback', (req, res) => {
 /**
  * Setup 404
  */
-app.all('*', (req, res) => {
+app.all('*', (_, res) => {
   res.status(404).json({
     status: 404,
     title: 'Not Found',
@@ -208,9 +245,9 @@ app.all('*', (req, res) => {
 });
 
 /**
- * Handel errors
+ * Handle errors
  */
-app.use((err, req, res, next) => {
+app.use((err, _, res, next) => {
   log(err.stack);
   res.status(500).json({
     status: 500,
@@ -222,4 +259,6 @@ app.use((err, req, res, next) => {
 app.listen(port, () => {
   console.log(`app listening on port ${port}`);
 });
+
+startVCR();
 
