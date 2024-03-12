@@ -29,6 +29,7 @@ const loadGames = async () => {
     .then((res) => res.json())
     .then((games) => Promise.resolve((() => {
       console.log(`Games loaded`, games);
+      hideSpinner();
       clearGame();
       displayGames(games);
       return games;
@@ -305,6 +306,7 @@ const selectChoice = (event) => {
 
 const displayQuestion = () => {
   console.log('Display question');
+  hideSpinner();
   clearQuestion();
   if (getLatestQuestion()) {
     document.querySelector('.question-section')
@@ -334,15 +336,14 @@ const buildQuestionElement = () => {
 
   const choices = questionElement.querySelectorAll('button.choice');
 
-  //  getAskButton().classList.add('d-none');
-  const totalRespondants = question.choices.reduce(
+  const totalRespondants = Object.values(question.choices).reduce(
     (acc, { audience_choice: audienceChoice }) => acc + audienceChoice,
     0,
   );
 
-  console.log(`Total respondands ${totalRespondants}`);
+  console.log(`Total respondants ${totalRespondants}`);
   for (const [index, element] of choices.entries()) {
-    const choice = getLatestQuestion()?.choices[index];
+    const choice = Object.values(getLatestQuestion()?.choices || {})[index];
     element.innerHTML = buildChoiceText(choice, totalRespondants);
     element.disabled = choice.removed;
     element.dataset.choice = choice.letter;
@@ -367,27 +368,20 @@ const clearQuestion = () => {
 };
 
 const showSpinner = (text) => {
-  const questionSection = document
-    .querySelector('.question-section');
-
-  questionSection.innerText = '';
-
-  const spinnerDiv = document.createElement('div');
-  spinnerDiv.classList.add('spinner-border', 'spinner');
-
-  const textSpan = document.createElement('span');
-  textSpan.classList.add('visually-hidden');
-
-  textSpan.innerText = text ? text : 'Loading';
-  spinnerDiv.appendChild(textSpan);
-
-  questionSection.appendChild(spinnerDiv);
-  return spinnerDiv;
+  console.log('show spinner');
+  getSpinnerSection().classList.remove('d-none');
 };
 
 const hideSpinner = () => {
-  document.querySelector('.spinner')?.remove();
+  console.log('Hiding spinner');
+  getSpinnerSection().classList.add('d-none');
 };
+
+const getSpinnerSection = () => document.getElementById('spinner_section');
+
+const getSpinnerText = () => getSpinnerSection().querySelector('.spinner-text');
+
+const getSignupSection = () => document.getElementById('signup_section');
 
 const getGameListSection = () => document.getElementById('game_list_section');
 
@@ -433,11 +427,12 @@ const getCurrentGameId = () => getCurrentGame()?.id;
 
 const getCurrentScore = () => getCurrentGame()?.score;
 
-const getGameQuestions = () => getCurrentGame()?.questions || [];
+const getGameQuestions = () => Object.values(getCurrentGame()?.questions || {})
+  || [];
 
 const getLatestQuestion = () => getGameQuestions().slice(-1)[0];
 
-const getChoice = (which) => getLatestQuestion()?.choices
+const getChoice = (which) => Object.values(getLatestQuestion()?.choices || {})
   .find(({ letter }) => letter === which);
 
 const getPointScale = () => getCurrentGame()?.point_scale || [];
@@ -520,10 +515,16 @@ const playGame = async (gameId) => {
     .getElementById('numbers_table');
 
   const numberCell = document.getElementById('join_here');
-  const qrcode = new QRCode(
-    numberCell,
-  );
-  qrcode.makeCode(game.url);
+  getSignupSection().classList.add('d-none');
+  if (game.url) {
+    const qrcode = new QRCode(
+      numberCell,
+    );
+    console.log('Creating QR code', game.url);
+    game.url && qrcode.makeCode(game.url);
+    getSignupSection().classList.remove('d-none');
+  }
+
   numbersElement.innerHTML = '';
 
   numbers?.forEach(({ countryName, country, number }) => {
@@ -535,7 +536,6 @@ const playGame = async (gameId) => {
 
     const flag = new CountryFlag(countryCell);
     flag.selectByAlpha2(`${country}`.toLowerCase());
-
 
     const numberCell = document.createElement('div');
     const qrcode = new QRCode(
@@ -566,7 +566,7 @@ const resetNoPlayer = () => {
     .getElementById('game')
     .querySelectorAll('.row');
 
-  for (const [index, element] of gameRows.entries()) {
+  for (const [, element] of gameRows.entries()) {
     element.classList.remove('justify-content-center');
   }
 };
@@ -578,7 +578,7 @@ const showNoPlayer = () => {
     .getElementById('game')
     .querySelectorAll('.row');
 
-  for (const [index, element] of gameRows.entries()) {
+  for (const [, element] of gameRows.entries()) {
     element.classList.add('justify-content-center');
   }
 
@@ -598,13 +598,10 @@ const setupPhoneCall = async (calling) => {
   const { jwt } = getCurrentGame();
   getCallerElement().innerText = calling.name;
   // eslint-disable-next-line
-  window.app = await new NexmoClient({ debug: true})
-    .createSession(jwt);
-
+  const client = new vonageClientSDK.VonageClient({ loggingLevel: 'Debug' });
+  await client.createSession(jwt);
+  window.app = client;
   window.calling = calling;
-  window.app.on('member:call', (member, call) => {
-    window.call = call;
-  });
 };
 
 const dialADev = async () => {
@@ -626,8 +623,7 @@ const dialADev = async () => {
 
   const choices = questionElement.querySelectorAll('button.choice');
 
-  // eslint-disable-next-line
-  for (const [index, element] of choices.entries()) {
+  for (const [, element] of choices.entries()) {
     element.classList.remove(
       'selected-choice',
       'btn-info',
@@ -662,12 +658,18 @@ const dialPlayer = async () => {
 };
 
 const endCall = async () => {
-  if (!window.call?.hangUp) {
+  if (!window.app) {
+    console.log('No App set');
     return;
   }
 
-  window.call?.hangUp();
-  window.call = null;
+  if (!window.callId) {
+    console.log('No Call ID set');
+    return;
+  }
+
+  window.app.hangup(window.callId);
+  window.callId = null;
 };
 
 const startCall = async () => {
@@ -683,15 +685,18 @@ const startCall = async () => {
 
   const calling = window.calling;
   console.log(`Calling ${calling.name}: ${calling.phone}`);
-  window.app.callServer(calling.phone);
-  window.app = null;
+  window.app.serverCall({ to: calling.phone }).then((callId) => {
+    window.callId = callId;
+  });
 };
 
 
 const findPlayer = async () => {
   console.log('Find Player');
   showSpinner();
+  getGameSection().classList.add('d-none');
   await makeRPCCall('find_player');
+  getGameSection().classList.remove('d-none');
   const game = getCurrentGame();
   await askQuestion();
   resetNoPlayer();
@@ -839,16 +844,13 @@ const showAudienceResponses = () => {
 
   const profileElement = document.getElementById('audience_profiles');
   const questionElement = buildQuestionElement();
-  const question = getLatestQuestion();
 
-  console.log(question.choices);
   questionElement.querySelector('button.ask').classList.add('d-none');
   questionElement.querySelector('button.answer').classList.add('d-none');
 
   const choices = questionElement.querySelectorAll('button.choice');
 
-  // eslint-disable-next-line
-  for (const [_, element] of choices.entries()) {
+  for (const [, element] of choices.entries()) {
     const { choice } = element.dataset;
     const choiceData = getChoice(choice);
 

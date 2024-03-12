@@ -4,7 +4,7 @@ import debug from 'debug';
 
 dotenv.config();
 
-const log = debug('@vonage.openai');
+const log = debug('@vonage.game.openai');
 
 const openai = new OpenAIApi({
   apiKey: process.env.OPENAI_API_KEY,
@@ -21,8 +21,6 @@ export const callGPT = async (
 ) => {
   log('Calling ChatGPT');
   try {
-    log(messages);
-
     const chatCompletion = await openai.chat.completions.create(
       {
         model: 'gpt-3.5-turbo-0125',
@@ -32,7 +30,7 @@ export const callGPT = async (
       },
     );
 
-    log('Call to GPT complete', JSON.stringify(chatCompletion, null, 2));
+    log('Call to GPT complete');
     const content = chatCompletion.choices[0].message.content;
     log(content);
     return content;

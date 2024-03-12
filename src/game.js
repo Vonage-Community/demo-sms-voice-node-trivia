@@ -1,4 +1,5 @@
 import { callGPT } from './openai.js';
+
 import _ from 'lodash';
 import debug from 'debug';
 import parseJson from 'json-parse-better-errors';
@@ -13,14 +14,12 @@ import { getAirtableSignups } from './airtable.js';
 import {
   saveGame,
   fetchGame,
+  updateAudienceChoice,
 } from './mongo.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// enable debug for all when running in VCR remove this when VCR updates
-// variable
-process.env.VCR_PORT && debug.enable('@vonage.game.engine');
 const log = debug('@vonage.game.engine');
 
 /**
@@ -45,7 +44,8 @@ const makeId = (length) => {
  * @param {Array} questions The questions
  * @return {Object} The current question
  */
-const getCurrentQuestion = (questions) => questions.slice(-1)[0];
+const getCurrentQuestion = (questions) => questions
+  && Object.values(questions).slice(-1)[0];
 
 /**
  * (Try to) parse the response from GPT
@@ -81,6 +81,9 @@ const parseQuestion = (messages, content) => {
 const ask = async (game) => {
   log('Asking question');
 
+  if (game.questions === undefined) {
+    game.questions = {};
+  }
   const { questions, messages } = game;
   const currentPoint = pointScale[getPointIndex(game) + 1] || pointScale[0];
   messages.push({
@@ -89,10 +92,12 @@ const ask = async (game) => {
   });
   log('Messages:', messages);
 
+  const questionCount = (Object.entries(questions).length || 0) + 1;
+
   const gptResponse = await callGPT(messages);
   const question = {
     ...parseQuestion(messages, gptResponse),
-    id: makeId(8),
+    id: `${questionCount}_${makeId(8)}`,
     answered: false,
     answered_correctly: false,
     passed: false,
@@ -101,14 +106,18 @@ const ask = async (game) => {
 
   log('Question:', question);
 
-  question.choices = question.choices.map((choice) => ({
-    ...choice,
-    letter: choice.letter.toUpperCase().substring(0, 1),
-    removed: false,
-    audience_choice: 0,
-  }));
+  question.choices = Object.fromEntries(
+    question.choices.map((choice) => [
+      choice.letter?.toUpperCase().substring(0, 1),
+      {
+        ...choice,
+        letter: choice.letter?.toUpperCase().substring(0, 1),
+        removed: false,
+        audience_choice: 0,
+      },
+    ]));
 
-  questions.push(question);
+  questions[question.id] = question;
   saveGame(game);
   return getCurrentQuestion(questions);
 };
@@ -146,7 +155,7 @@ const calculateScore = (game) => {
  * @param {Object} game The game
  * @return {Number} The point index
  **/
-const getPointIndex = (game) => game.questions.reduce(
+const getPointIndex = (game) => Object.values(game.questions || {}).reduce(
   (acc, { answered_correctly: answeredCorrectly, passed }) => {
     if (passed) {
       log('Question passed');
@@ -218,7 +227,7 @@ const narrowItDown = async (game) => {
   const { correct } = latestQuestion;
 
   const shuffle = _.compact(
-    latestQuestion.choices.map(({ letter }) =>
+    Object.values(latestQuestion.choices).map(({ letter }) =>
       correct !== letter ? letter : null,
     ),
   ).sort(() => 0.5 - Math.random());
@@ -226,7 +235,7 @@ const narrowItDown = async (game) => {
   shuffle.pop();
   log('Shuffle', shuffle);
 
-  latestQuestion.choices.forEach(
+  Object.values(latestQuestion.choices).forEach(
     (choice) => (choice.removed = shuffle.includes(choice.letter)),
   );
 
@@ -260,8 +269,10 @@ const processAudienceResponse = async (game, inboundStatus) => {
   const { text, from } = inboundStatus;
 
   let response = `Thanks for helping ${game?.player?.name || ''}`;
+  const question = getLatestQuestion(game.questions);
+  const choices = Object.values(question.choices);
 
-  const allowedLetters = getLatestQuestion(game.questions).choices.map(
+  const allowedLetters = choices.map(
     ({ letter, removed }) => !removed ? letter : null).filter(
     (letter) => letter,
   );
@@ -277,7 +288,7 @@ const processAudienceResponse = async (game, inboundStatus) => {
   if (letter && allowedLetters.includes(letter)) {
     updateAudienceChoice(
       game.id,
-      getLatestQuestion(game.questions).id,
+      question.id,
       letter,
     );
   }
@@ -287,7 +298,7 @@ const processAudienceResponse = async (game, inboundStatus) => {
     + `Please respond with only ${allowedLetters.join(', ')}.`;
   }
 
-  const removedLetters = getLatestQuestion(game.questions).choices.map(
+  const removedLetters = choices.map(
     ({ letter, removed }) => removed ? letter : null).filter(
     (letter) => letter,
   );
@@ -305,7 +316,8 @@ const processAudienceResponse = async (game, inboundStatus) => {
  * @param {Array} questions The questions
  * @return {Object} The latest question
  */
-const getLatestQuestion = (questions) => questions.slice(-1)[0];
+const getLatestQuestion = (questions) => Object.values(questions || {})
+  .slice(-1)[0];
 
 /**
  * Get the correct choice for the question
@@ -315,7 +327,7 @@ const getLatestQuestion = (questions) => questions.slice(-1)[0];
 const getCorrectChoice = (questions) => {
   const latestQuestion = getLatestQuestion(questions);
 
-  return latestQuestion.choices.find(
+  return Object.values(latestQuestion.choices).find(
     (choice) => choice.letter === latestQuestion.correct,
   );
 };

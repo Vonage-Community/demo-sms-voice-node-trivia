@@ -8,7 +8,9 @@
     },
     "globals": {
         "_": true,
-        "Toastify": true
+        "Toastify": true,
+        "CountryFlag": true,
+        "QRCode": true
     },
     "extends": [
         "eslint:recommended",

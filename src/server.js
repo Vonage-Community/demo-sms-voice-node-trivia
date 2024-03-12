@@ -7,18 +7,59 @@ import { Voice, Messages, vcr } from '@vonage/vcr-sdk';
 import { getVCRPort, isVCR } from './vcr.js';
 import debug from 'debug';
 
-// enable debug for all when running in VCR remove this when VCR updates
-// variable
-process.env.VCR_PORT && debug.enable('*vonage*');
+process.env.VCR_PORT && debug.enable('*vonage.game*');
 
 const log = debug('@vonage.game.server');
 
 dotenv.config();
 
 let activeGameId;
+
+const onCallEvent = (req, res) => {
+  log('Event:', req.body);
+  res.sendStatus(200);
+};
+
+const onFallback = (req, res) => {
+  log('Fallback:', req.body);
+  res.sendStatus(200);
+};
+
+const answerCall = (req, res) => {
+  log('Answer: ', req.body);
+  let ncco = [
+    {
+      'action': 'talk',
+      'text': 'No destination user - hanging up',
+    },
+  ];
+
+  const username = req.body.to;
+  if (username) {
+    ncco = [
+      {
+        'action': 'talk',
+        'text': `Please wait while we connect you`,
+      },
+      {
+        'action': 'connect',
+        'from': process.env.FROM_NUMBER,
+        'endpoint': [
+          {
+            'type': 'phone',
+            'number': req.body.to,
+          },
+        ],
+      },
+    ];
+  }
+  log('NCCO', JSON.stringify(ncco, null, 2));
+  res.json(ncco);
+};
+
 const processMessage = async (req, res) => {
   const body = req.body;
-  log(`Inbound SMS ${activeGameId}`, body);
+  log(`Inbound Message ${activeGameId}`, body);
   if (activeGameId) {
     const game = await getGame(activeGameId);
     game.processAudienceResponse(body);
@@ -50,6 +91,8 @@ const startVCR = async () => {
     const messaging = new Messages(session);
 
     await voice.onCall('onCall');
+    await voice.onCallEvent('onCallEvent');
+
     await messaging.onMessage('onMessage', from, vonageNumber);
     await messaging.onMessageEvent('onEvent', from, vonageNumber);
   } catch (error) {
@@ -184,60 +227,30 @@ app.all('/onMessage', catchAsync(processMessage));
 app.all('/status', catchAsync(processStatus));
 app.all('/onStatus', catchAsync(processStatus));
 
-const answerCall = (req, res) => {
-  log('Answer: ', req.body);
-  let ncco = [
-    {
-      'action': 'talk',
-      'text': 'No destination user - hanging up',
-    },
-  ];
-
-  const username = req.body.to;
-  if (username) {
-    ncco = [
-      {
-        'action': 'connect',
-        'from': process.env.FROM_NUMBER,
-        'endpoint': [
-          {
-            'type': 'phone',
-            'number': req.body.to,
-          },
-        ],
-      },
-    ];
-  }
-  log('NCCO', JSON.stringify(ncco, null, 2));
-  res.json(ncco);
-};
 
 /**
  * Handle voice answer
  */
 app.all('/voice/answer', answerCall);
-app.all('onCall', answerCall);
+app.all('/onCall', answerCall);
+
 
 /**
  * Handle voice events
  */
-app.all('/voice/event', (req, res) => {
-  log('Event:', req.body);
-  res.sendStatus(200);
-});
+app.all('/voice/event', onCallEvent);
+app.all('/onCallEvent', onCallEvent);
 
 /**
  * Handle voice fallback
  */
-app.all('/voice/fallback', (req, res) => {
-  log('Fallback:', req.body);
-  res.sendStatus(200);
-});
+app.all('/voice/fallback', onFallback);
 
 /**
  * Setup 404
  */
 app.all('*', (_, res) => {
+  log('Page Not Found');
   res.status(404).json({
     status: 404,
     title: 'Not Found',

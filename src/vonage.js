@@ -7,10 +7,7 @@ import { saveGame } from './mongo.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
-// enable debug for all when running in VCR remove this when VCR updates
-// variable
-process.env.VCR_PORT && debug.enable('@vonage.vonage');
-const log = debug('@vonage.vonage');
+const log = debug('@vonage.game.vonage');
 
 const FROM_NUMBER = process.env.FROM_NUMBER;
 
@@ -75,34 +72,42 @@ export const createGameVoiceUser = async () => {
   await vonage.users.createUser({
     name: 'game_user',
   });
+  log('User created');
 };
 
 /**
  * Generate a JWT token for the game
  *
+ * @param {Object} game The game
  * @return {String} The token
  */
-export const getJwt = () => tokenGenerate(
-  getVCRAppliationId(),
-  privateKey,
-  {
-    sub: 'game_user',
-    acl: {
-      'paths': {
-        '/*/users/**': {},
-        '/*/conversations/**': {},
-        '/*/sessions/**': {},
-        '/*/devices/**': {},
-        '/*/image/**': {},
-        '/*/media/**': {},
-        '/*/applications/**': {},
-        '/*/push/**': {},
-        '/*/knocking/**': {},
-        '/*/legs/**': {},
+export const getJwt = async (game) => {
+  log('Generating JWT');
+  await createGameVoiceUser();
+
+  game.jwt = tokenGenerate(
+    getVCRAppliationId(),
+    privateKey,
+    {
+      sub: 'game_user',
+      acl: {
+        'paths': {
+          '/*/users/**': {},
+          '/*/conversations/**': {},
+          '/*/sessions/**': {},
+          '/*/devices/**': {},
+          '/*/image/**': {},
+          '/*/media/**': {},
+          '/*/applications/**': {},
+          '/*/push/**': {},
+          '/*/knocking/**': {},
+          '/*/legs/**': {},
+        },
       },
     },
-  },
-);
+  );
+  return game;
+};
 
 export const sendMessage = async (from, message) => {
   const params = {

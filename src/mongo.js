@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const log = debug('@vonage.mongo');
+const log = debug('@vonage.game.mongo');
 
 const uri = new URL(`mongodb://${process.env.DB_HOST}`);
 
@@ -82,19 +82,18 @@ export const updateAudienceChoice = async (
   choiceLetter,
 ) => {
   log(`Updating audience choice for game: ${gameId}`);
+  log(`Question: ${questionId}, Letter: ${choiceLetter}`);
   const { collection } = await mongoClient();
   try {
-    await collection.updateOne(
-      { '_id': 'p6M9zICD', 'questions.id': questionId },
-      { $inc: { 'questions.$[q].choices.$[c].audience_choice': 1 } },
+    const results = await collection.updateOne(
+      { '_id': gameId },
       {
-        arrayFilters: [
-          { 'q.id': 'gNNDka8b' }, // Identifies the correct question
-          { 'c.letter': choiceLetter }, // Identifies the choice with letter B
-        ],
+        '$inc': {
+          [`questions.${questionId}.choices.${choiceLetter}.audience_choice`]: 1,
+        },
       },
     );
-    log('Audience choice updated');
+    log('Audience choice updated', results);
   } catch (e) {
     log(`Failed to update choice for game: ${gameId}`);
     log(e);
