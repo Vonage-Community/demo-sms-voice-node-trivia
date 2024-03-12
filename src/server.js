@@ -143,10 +143,10 @@ app.get('/games', catchAsync(async (_, res) => {
  * Create a game
  */
 app.post('/games', catchAsync(async (req, res) => {
-  const { title, url, categories } = req.body;
+  const { title, url, categories, airtable } = req.body;
   log(`Create game`);
 
-  const game = await createGame(title, url, categories);
+  const game = await createGame(title, url, categories, airtable);
   log('Game created');
 
   res.send(game);
@@ -188,6 +188,7 @@ app.put('/games/:gameId', catchAsync(async (req, res) => {
 
   case 'find_player':
     await game.findPlayer();
+    await game.ask();
     break;
 
   case 'ask':

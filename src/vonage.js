@@ -68,11 +68,16 @@ export const createGameVoiceUser = async () => {
     log('User does not exist');
   }
 
-  log('Creating user');
-  await vonage.users.createUser({
-    name: 'game_user',
-  });
-  log('User created');
+  try {
+    log('Creating user');
+
+    await vonage.users.createUser({
+      name: 'game_user',
+    });
+    log('User created');
+  } catch (error) {
+    log('Failed to create user', error);
+  }
 };
 
 /**

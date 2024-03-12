@@ -17,11 +17,11 @@ const airtable = new Airtable({
   apiKey: process.env.AIRTABLE_TOKEN,
 });
 
-const getTable = async () => {
+const getTable = async (tableId) => {
   log('Getting airtable table');
   const table = airtable
     .base(AT_BASE_ID)
-    .table(AT_TABLE_ID);
+    .table(tableId);
   log('Done with airtable table call');
   log(`Table: ${table?.id}`, table);
   return table;
@@ -29,7 +29,7 @@ const getTable = async () => {
 
 export const getAirtableSignups = async (game) => {
   log('Finding particapants');
-  const table = await getTable();
+  const table = await getTable(game.airtable || AT_TABLE_ID);
   log(`Airtable`, table);
   const records = await table.select({
     fields: Object.values(AT_FIELDS),

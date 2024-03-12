@@ -96,6 +96,7 @@ const submitForm = async () => {
   const newGame = {
     title: null,
     url: null,
+    airtable: null,
     categories: [],
   };
 
@@ -309,10 +310,14 @@ const displayQuestion = () => {
   hideSpinner();
   clearQuestion();
   if (getLatestQuestion()) {
+    console.log('We have a question');
     document.querySelector('.question-section')
       .appendChild(buildQuestionElement());
     getAskButton().classList.add('d-none');
+    return;
   }
+
+  console.log('No question to display');
 };
 
 const buildQuestionElement = () => {
@@ -427,7 +432,7 @@ const getCurrentGameId = () => getCurrentGame()?.id;
 
 const getCurrentScore = () => getCurrentGame()?.score;
 
-const getGameQuestions = () => Object.values(getCurrentGame()?.questions || {})
+const getGameQuestions = () => Object.values(getCurrentGame().questions || {})
   || [];
 
 const getLatestQuestion = () => getGameQuestions().slice(-1)[0];
@@ -694,13 +699,11 @@ const startCall = async () => {
 const findPlayer = async () => {
   console.log('Find Player');
   showSpinner();
+  resetNoPlayer();
   getGameSection().classList.add('d-none');
   await makeRPCCall('find_player');
   getGameSection().classList.remove('d-none');
-  const game = getCurrentGame();
-  await askQuestion();
-  resetNoPlayer();
-  getGamePlayer().innerText = `Player: ${game?.player?.name || ''}`;
+  getGamePlayer().innerText = `Player: ${window.currentGame?.player?.name || ''}`;
 };
 
 const handelButtonClickEvent = (event) => {

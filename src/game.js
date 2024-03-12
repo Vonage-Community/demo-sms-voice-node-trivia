@@ -81,9 +81,6 @@ const parseQuestion = (messages, content) => {
 const ask = async (game) => {
   log('Asking question');
 
-  if (game.questions === undefined) {
-    game.questions = {};
-  }
   const { questions, messages } = game;
   const currentPoint = pointScale[getPointIndex(game) + 1] || pointScale[0];
   messages.push({
@@ -365,8 +362,7 @@ export const pointScale = [
  * @param {String} title The title of the game
  * @param {String} url The URL for the game
  * @param {Array} categories The categories for the game
- * @param {Array} questions The questions for the game
- * @param {Array} messages The messages for the game
+ * @param {String} airtable The airtable table id
  *
  * @return {Object} The game
  */
@@ -374,6 +370,7 @@ export const createGame = async (
   title,
   url,
   categories,
+  airtable,
 ) => {
   log(`Creating new game ${title}`, categories);
 
@@ -392,8 +389,9 @@ export const createGame = async (
     id: makeId(8),
     title: title,
     url: url,
+    airtable: airtable,
     categories: categories,
-    questions: [],
+    questions: {},
     messages: [],
     point_scale: pointScale,
     score: 0,

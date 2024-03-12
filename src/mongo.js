@@ -121,7 +121,7 @@ export const fetchGame = async (gameId) => {
  * @param {Object} game The game
  */
 export const saveGame = async (game) => {
-  log(`Saving game: ${game.id}`);
+  log(`Saving game: ${game.id}`, game);
   const { collection } = await mongoClient();
   try {
     await collection.replaceOne(
