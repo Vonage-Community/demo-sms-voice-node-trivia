@@ -150,6 +150,7 @@ const createGame = () => {
 const fetchGame = async (gameId) => {
   console.log(`Fetching game ${gameId}`);
   window.currentGame = null;
+  showSpinner('Loading game');
   return fetch(
     `${apiHost}/games/${gameId}`,
     {
@@ -174,14 +175,13 @@ const fetchGame = async (gameId) => {
 
 const passQuestion = async () => {
   console.log('Passing question');
-  showSpinner();
+  showSpinner('Passing question');
   getChoicesSection()?.classList.add('d-none');
   return makeRPCCall('pass').then(displayQuestion);
 };
 
 const askQuestion = async () => {
   console.log('Asking question');
-  getChoicesSection()?.classList.add('d-none');
   showSpinner('Asking question');
   return makeRPCCall('ask').then(displayQuestion);
 };
@@ -220,7 +220,6 @@ const makeRPCCall = async (action, parameters = null, id = null) => {
     })
     .catch((error) => {
       console.error(error);
-      // eslint-disable-next-line
       Toastify({
         text: `Failed JSON RPC call: ${error.message}`,
         className: 'error',
@@ -258,7 +257,7 @@ const answerQuestion = async (selectedChoice) => {
   const choice = selectedChoice.dataset.choice;
   console.log(`Choice ${choice}`, selectedChoice.dataset);
 
-  showSpinner();
+  showSpinner('Answering question');
   return makeRPCCall(
     'answer',
     {
@@ -281,22 +280,31 @@ const confirmChoice = () => {
 
       correctChoice.classList.remove('btn-info');
       correctChoice.classList.add('btn-success');
+
       if (!latestQuestion.answered_correctly) {
         console.log('Wrong answer');
         selectedChoice?.classList.remove('btn-info');
         selectedChoice?.classList.add('btn-danger');
+        getAskButton().classList.add('d-none');
         return;
       }
+
       console.log('Correct Answer');
 
       window.jsConfetti.addConfetti(
         CONFETTI_ARGS.sort(() => 0.5 - Math.random())[0],
       );
+
       getAskButton().classList.remove('d-none');
     });
 };
 
 const selectChoice = (event) => {
+  if (getLatestQuestion().answered) {
+    console.log('Question already answered');
+    return;
+  }
+
   getChoiceButtons().forEach((button) => {
     button.classList.remove('btn-info', 'selected-choice');
   });
@@ -306,18 +314,34 @@ const selectChoice = (event) => {
 };
 
 const displayQuestion = () => {
-  console.log('Display question');
+  const question = getLatestQuestion();
+  console.log('Display question', question);
   hideSpinner();
   clearQuestion();
-  if (getLatestQuestion()) {
-    console.log('We have a question');
-    document.querySelector('.question-section')
-      .appendChild(buildQuestionElement());
+
+
+  if (!question) {
+    console.log('No question to display');
+    return;
+  }
+
+  document.querySelector('.question-section')
+    .appendChild(buildQuestionElement());
+
+  if (!question.answered) {
+    console.log('Question answered');
     getAskButton().classList.add('d-none');
     return;
   }
 
-  console.log('No question to display');
+  getAnswerButton().classList.add('d-none');
+
+  if (!question.answered_correctly) {
+    console.log('Question answered correctly');
+    getAskButton().classList.add('d-none');
+    return;
+  }
+  getAskButton().classList.remove('d-none');
 };
 
 const buildQuestionElement = () => {
@@ -330,14 +354,18 @@ const buildQuestionElement = () => {
     return;
   }
 
-  console.log('We Have a question');
-
   const questionTemplate = document.getElementById('question_template');
   const questionElement = questionTemplate.content.cloneNode(true);
 
+  const questionParts = [question.question];
+
+  if (question.answered) {
+    questionParts.push(question.answered_correctly ? '✅' : '❌');
+  }
+
   questionElement
     .querySelector('* .question-text')
-    .innerText = question.question;
+    .innerText = questionParts.join(' ');
 
   const choices = questionElement.querySelectorAll('button.choice');
 
@@ -350,7 +378,6 @@ const buildQuestionElement = () => {
   for (const [index, element] of choices.entries()) {
     const choice = Object.values(getLatestQuestion()?.choices || {})[index];
     element.innerHTML = buildChoiceText(choice, totalRespondants);
-    element.disabled = choice.removed;
     element.dataset.choice = choice.letter;
     element.classList.remove(
       'selected-choice',
@@ -359,7 +386,22 @@ const buildQuestionElement = () => {
       'btn-success',
     );
 
-    if (choice.letter === getLatestQuestion()?.correct) {
+    element.classList.add('fw-bolder');
+    if (choice.removed) {
+      element.disabled = true;
+      element.classList.remove('fw-bolder');
+    }
+
+    if (question.answered) {
+      element.disabled = true;
+    }
+
+    if (question.answered && choice.letter === question.correct) {
+      element.classList.add('btn-success');
+      element.disabled = false;
+    }
+
+    if (choice.letter === question.correct) {
       element.classList.add('correct');
     }
   }
@@ -373,18 +415,48 @@ const clearQuestion = () => {
 };
 
 const showSpinner = (text) => {
-  console.log('show spinner');
+  console.log('Show spinner');
+  getSpinnerMessage().innerHTML = text || 'Loading ...';
   getSpinnerSection().classList.remove('d-none');
 };
 
 const hideSpinner = () => {
-  console.log('Hiding spinner');
+  console.log('Hide spinner');
   getSpinnerSection().classList.add('d-none');
 };
 
+const enableStartCallButton = () => {
+  for (const [, element] of getStartCallButton().entries()) {
+    element.disabled = false;
+  }
+};
+
+const enableEndCallButton = () => {
+  for (const [, element] of getEndCallButton().entries()) {
+    element.disabled = false;
+  }
+};
+
+const disableStartCallButton = () => {
+  for (const [, element] of getStartCallButton().entries()) {
+    element.disabled = true;
+  }
+};
+
+const disableEndCallButton = () => {
+  for (const [, element] of getEndCallButton().entries()) {
+    element.disabled = true;
+  }
+};
+
+const getStartCallButton = () => document.querySelectorAll('.start-call');
+
+const getEndCallButton = () => document.querySelectorAll('.end-call');
+
 const getSpinnerSection = () => document.getElementById('spinner_section');
 
-const getSpinnerText = () => getSpinnerSection().querySelector('.spinner-text');
+const getSpinnerMessage = () =>
+  getSpinnerSection().querySelector('.spinner-message');
 
 const getSignupSection = () => document.getElementById('signup_section');
 
@@ -417,8 +489,7 @@ const getChoiceButtons = () => getChoicesSection()
 const getSelectedChoice = () => getChoicesSection()
   .querySelectorAll('button.selected-choice')[0];
 
-const getQuestionElement = () => getGameSection()
-  .querySelector('#question');
+const getFooterText = () => document.querySelectorAll('.footer-text');
 
 const getScoreSection = () => getGameSection()
   .querySelector('#score_list');
@@ -429,8 +500,6 @@ const getChoicesSection = () => getGameSection()
 const getCurrentGame = () => window.currentGame || {};
 
 const getCurrentGameId = () => getCurrentGame()?.id;
-
-const getCurrentScore = () => getCurrentGame()?.score;
 
 const getGameQuestions = () => Object.values(getCurrentGame().questions || {})
   || [];
@@ -446,34 +515,49 @@ const getCallModal = () => document.getElementById('call');
 
 const getCallerElement = () => getCallModal().querySelector('#caller_name');
 
+const setModalText = (text) => {
+  for (const [, element] of getFooterText().entries()) {
+    element.innerHTML = text;
+  }
+};
+
+const clearModalText = () => {
+  setModalText('');
+};
+
 const displayScore = () => {
   console.log('Displaying score');
   const scaleList = getScoreSection();
   scaleList.innerText = '';
   const { score } = getCurrentGame();
+  const scoreIndex = getPointScale().indexOf(score);
+  const nextScore = getPointScale()[scoreIndex + 1];
   getPointScale().forEach((point) => {
     const pointElement = document.createElement('li');
     pointElement.innerText = new Intl.NumberFormat('en-US').format(point);
     pointElement.classList.add(
       'list-group-item',
-      'bg-dark-subtle',
-      'fw-lighter',
     );
 
-    if (point < getCurrentScore()) {
-      pointElement.classList.remove('fw-lighter', 'bg-dark-subtle');
+    if (point <= score) {
+      pointElement.classList.add(
+        'fw-bolder',
+      );
     }
 
-    if (point === getCurrentScore()) {
-      pointElement
-        .classList
-        .add('border', 'border-4', 'border-success', 'fw-bolder');
-
-      pointElement.classList.remove('bg-dark-subtle', 'fw-lighter');
+    if (point === nextScore) {
+      pointElement.classList.add(
+        'border',
+        'border-4',
+        'border-success',
+      );
     }
 
-    if (point === score) {
-      pointElement.classList.remove('bg-dark-subtle', 'fw-lighter');
+    if (point > nextScore) {
+      pointElement.classList.add(
+        'fw-lighter',
+        'bg-dark-subtle',
+      );
     }
 
     scaleList.appendChild(pointElement);
@@ -594,23 +678,15 @@ const showNoPlayer = () => {
 
 const narrowItDown = () => {
   console.log('Narrow it Down');
-  showSpinner();
+  showSpinner('Narrowing it down');
   makeRPCCall('life_line', { which: 'narrow_it_down',
   }).then(displayQuestion);
 };
 
-const setupPhoneCall = async (calling) => {
-  const { jwt } = getCurrentGame();
-  getCallerElement().innerText = calling.name;
-  // eslint-disable-next-line
-  const client = new vonageClientSDK.VonageClient({ loggingLevel: 'Debug' });
-  await client.createSession(jwt);
-  window.app = client;
-  window.calling = calling;
-};
 
 const dialADev = async () => {
   console.log('Dial a Dev');
+  showSpinner('Setting up Dial a dev');
   await makeRPCCall('life_line', { which: 'phone_a_dev' });
   document.getElementById('open_dial_a_dev').click();
 
@@ -629,6 +705,14 @@ const dialADev = async () => {
   const choices = questionElement.querySelectorAll('button.choice');
 
   for (const [, element] of choices.entries()) {
+    const { choice } = element.dataset;
+    const choiceData = getChoice(choice);
+
+    if (choiceData.removed) {
+      element.classList.add('d-none');
+      continue;
+    }
+
     element.classList.remove(
       'selected-choice',
       'btn-info',
@@ -640,17 +724,25 @@ const dialADev = async () => {
   }
 
   dialADevElement
-    .querySelector('.dad-title').innerText = `Dial A Dev: ${dad.name}`;
+    .querySelector('.dad-title').innerText = `Dial A Dev: ${dad?.name}`;
 
   dialADevElement.querySelector('#dial_a_dev_body')
     .appendChild(questionElement);
 
   setupPhoneCall(dad);
+
+  dialADevElement
+    .addEventListener('hide.bs.modal', () => {
+      console.log('DAD Modal closing');
+      endCall();
+    });
 };
 
 const dialPlayer = async () => {
   console.log('dial player');
+  showSpinner('Setting up Call player');
   await makeRPCCall('call_player');
+
   const { jwt } = getCurrentGame();
   console.log(`JWT token ${jwt}`);
 
@@ -660,6 +752,54 @@ const dialPlayer = async () => {
   console.log(getCallerElement());
   getCallerElement().innerText = player.name;
   setupPhoneCall(player);
+};
+
+const setupPhoneCall = async (calling) => {
+  console.log('Setting up phone call');
+
+  disableStartCallButton();
+  disableEndCallButton();
+
+  try {
+    const { jwt } = getCurrentGame();
+    getCallerElement().innerText = calling.name;
+    // eslint-disable-next-line
+    const client = new vonageClientSDK.VonageClient({ loggingLevel: 'Debug' });
+    setModalText('Starting Call session. Please wait ...');
+    await client.createSession(jwt);
+
+    setModalText('Ready to call');
+
+    enableStartCallButton();
+
+    client.on('callInvite', () => {
+      setModalText('Calling ...');
+    });
+
+    client.on('callHangup', () => {
+      setModalText(`Call has hung up`);
+      disableEndCallButton();
+      enableStartCallButton();
+    });
+
+    client.on('sessionError', (error) => {
+      setModalText(`Error when making call: ${error}`);
+      enableStartCallButton();
+      disableEndCallButton();
+    });
+
+    window.app = client;
+    window.calling = calling;
+  } catch (error) {
+    // eslint-disable-next-line
+    Toastify({
+      text: `Could not start phone call: ${error.message}`,
+      className: 'error',
+      position: 'center',
+      duration: 8000,
+    }).showToast();
+    clearModalText();
+  }
 };
 
 const endCall = async () => {
@@ -672,6 +812,11 @@ const endCall = async () => {
     console.log('No Call ID set');
     return;
   }
+
+  enableStartCallButton();
+  disableEndCallButton();
+
+  setModalText('Ending Call');
 
   window.app.hangup(window.callId);
   window.callId = null;
@@ -688,9 +833,17 @@ const startCall = async () => {
     return;
   }
 
+  enableEndCallButton();
+  disableStartCallButton();
+
   const calling = window.calling;
   console.log(`Calling ${calling.name}: ${calling.phone}`);
+  setModalText(`Calling ${calling.name}`);
+
   window.app.serverCall({ to: calling.phone }).then((callId) => {
+    console.log('Settion started');
+
+    disableStartCallButton();
     window.callId = callId;
   });
 };
@@ -698,7 +851,7 @@ const startCall = async () => {
 
 const findPlayer = async () => {
   console.log('Find Player');
-  showSpinner();
+  showSpinner('Finding player');
   resetNoPlayer();
   getGameSection().classList.add('d-none');
   await makeRPCCall('find_player');
@@ -818,10 +971,15 @@ const textTheAudience = () => {
   console.log('Text the audience');
   showAudienceResponses();
   document.getElementById('open_tta').click();
+  showSpinner('Setting up Text the audience');
   makeRPCCall(
     'life_line',
     { which: 'text_the_audience' },
   ).then(pollAudienceStatus);
+};
+
+const stopPolling = () => {
+  clearInterval(window.audiencePollId);
 };
 
 const pollAudienceStatus = () => {
@@ -836,8 +994,8 @@ const pollAudienceStatus = () => {
 
   document.getElementById('tta')
     .addEventListener('hide.bs.modal', () => {
-      console.log('Modal closing');
-      clearInterval(window.audiencePollId);
+      console.log('TTA Modal closing');
+      stopPolling();
       makeRPCCall('load_game').then(displayQuestion);
     });
 };

@@ -251,7 +251,6 @@ app.all('/voice/fallback', onFallback);
  * Setup 404
  */
 app.all('*', (_, res) => {
-  log('Page Not Found');
   res.status(404).json({
     status: 404,
     title: 'Not Found',

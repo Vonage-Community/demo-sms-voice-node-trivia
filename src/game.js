@@ -22,6 +22,17 @@ dotenv.config();
 
 const log = debug('@vonage.game.engine');
 
+const questionSchema = {
+  question: 'The text for the string',
+  choices: [
+    {
+      letter: 'The letter choice',
+      text: 'The choice',
+    },
+  ],
+  correct: 'The correct choice',
+};
+const permittedLetters = ['A', 'B', 'C', 'D'];
 /**
  * Create an ID
  *
@@ -64,11 +75,60 @@ const parseQuestion = (messages, content) => {
     const parsed = parseJson(content);
     log(parsed);
 
+    validateQuestion(parsed);
+
     parsed.correct = parsed.correct.substring(0, 1).toUpperCase();
     return parsed;
   } catch (error) {
-    log('JSON parse Error', error);
-    throw new Error('GPT did not listen and return proper JSON');
+    throw new Error(
+      `GPT did not listen and didn't return a proper question\n`
+      + `Reason: ${error.message}`,
+    );
+  }
+};
+
+const validateQuestion = (question) => {
+  if (!question.question) {
+    throw new Error('Question text is missing');
+  }
+
+  if (question.correct === undefined) {
+    throw new Error('Correct choice is missing');
+  }
+
+  if (!question.choices) {
+    throw new Error('Choices are missing');
+  }
+
+  if (!Array.isArray(question.choices)) {
+    throw new Error('Choices is not an array');
+  }
+
+  if (question.choices.length !== 4) {
+    throw new Error('Not correct number of choices');
+  }
+
+  let foundCorrect = false;
+  question.choices.forEach((choice) => {
+    if (!choice.letter) {
+      throw new Error('Choice letter is missing');
+    }
+
+    if (!permittedLetters.includes(choice.letter)) {
+      throw new Error('Choice letter is incorrect');
+    }
+
+    if (!choice.text) {
+      throw new Error('Choice text is missing');
+    }
+
+    if (choice.letter === question.correct) {
+      foundCorrect = true;
+    }
+  });
+
+  if (!foundCorrect) {
+    throw new Error('Correct choice not found in choices');
   }
 };
 
@@ -127,7 +187,11 @@ const ask = async (game) => {
  */
 const pass = async (game) => {
   log('Passing question');
-  getCurrentQuestion(game.questions).passed = true;
+  const question = getCurrentQuestion(game.questions);
+  question.passed = true;
+  question.answered = true;
+  question.answered_correctly = true;
+
   const nextQuestion = await ask(game);
   calculateScore(game);
   await saveGame(game);
@@ -154,11 +218,6 @@ const calculateScore = (game) => {
  **/
 const getPointIndex = (game) => Object.values(game.questions || {}).reduce(
   (acc, { answered_correctly: answeredCorrectly, passed }) => {
-    if (passed) {
-      log('Question passed');
-      return acc;
-    }
-
     if (!answeredCorrectly) {
       log('Question not answered correctly');
       return acc;
@@ -202,10 +261,19 @@ const answer = async (game, { letterChoice }) => {
 const phoneADev = async (game) => {
   log('Phone a friend');
   game.life_lines.phone_a_dev = true;
-  game.jwt = getJwt();
+  await game.getJwt();
   await getAirtableSignups(game);
 
-  game.dad = game.particapants.sort(() => 0.5 - Math.random())[0];
+  if (game.particapants.length < 2) {
+    throw new Error('Not enough particapants to phone a friend');
+  }
+
+  const randomParticpants = game.particapants.sort(() => 0.5 - Math.random());
+  const dad = game.player.phone === randomParticpants[0].phone
+    ? randomParticpants[1]
+    : randomParticpants[0];
+
+  game.dad = dad;
   await saveGame(game);
 };
 
@@ -374,16 +442,6 @@ export const createGame = async (
 ) => {
   log(`Creating new game ${title}`, categories);
 
-  const questionSchema = {
-    question: 'The text for the string',
-    choices: [
-      {
-        letter: 'The letter choice',
-        text: 'The choice',
-      },
-    ],
-    correct: 'The correct choice',
-  };
 
   const game = fillGame({
     id: makeId(8),
