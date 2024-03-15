@@ -764,7 +764,7 @@ const setupPhoneCall = async (calling) => {
     const { jwt } = getCurrentGame();
     getCallerElement().innerText = calling.name;
     // eslint-disable-next-line
-    const client = new vonageClientSDK.VonageClient({ loggingLevel: 'Debug' });
+    const client = new vonageClientSDK.VonageClient({ debug: true });
     setModalText('Starting Call session. Please wait ...');
     await client.createSession(jwt);
 
@@ -772,12 +772,23 @@ const setupPhoneCall = async (calling) => {
 
     enableStartCallButton();
 
+    client.on('legStatusUpdate', (callId, legId, status) => {
+      console.log('Leg status update', status);
+      if (status.name === 'ANSWERED') {
+        setModalText('Call has been answered');
+      }
+
+      if (status.name === 'RINGING') {
+        setModalText('Ringing ...');
+      }
+    });
+
     client.on('callInvite', () => {
       setModalText('Calling ...');
     });
 
     client.on('callHangup', () => {
-      setModalText(`Call has hung up`);
+      setModalText(`Call has ended`);
       disableEndCallButton();
       enableStartCallButton();
     });
