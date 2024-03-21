@@ -114,9 +114,9 @@ export const getJwt = async (game) => {
   return game;
 };
 
-export const sendMessage = async (from, message) => {
+export const sendMessage = async (from, to, message) => {
   const params = {
-    from: FROM_NUMBER,
+    from: to || FROM_NUMBER,
     to: from,
     text: message,
   };

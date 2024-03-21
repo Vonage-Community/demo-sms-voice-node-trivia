@@ -331,7 +331,7 @@ const textTheAudience = async (game) => {
  * @return {Promise} The promise
  */
 const processAudienceResponse = async (game, inboundStatus) => {
-  const { text, from } = inboundStatus;
+  const { text, from, to } = inboundStatus;
 
   let response = `Thanks for helping ${game?.player?.name || ''}`;
   const question = getLatestQuestion(game.questions);
@@ -373,7 +373,7 @@ const processAudienceResponse = async (game, inboundStatus) => {
     + `Please respond with only ${allowedLetters.join(', ')}.`;
   }
 
-  await sendMessage(from, response);
+  await sendMessage(from, to, response);
 };
 
 /**
