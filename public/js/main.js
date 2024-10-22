@@ -1,4 +1,5 @@
-const apiHost = `${location.protocol}//${location.host || 'localhost'}`;
+// const apiHost = `${location.protocol}//${location.host || 'localhost'}`;
+const apiHost = window.location.origin;
 
 const CONFETTI_ARGS = [
   {},
@@ -114,6 +115,7 @@ const submitForm = async () => {
     newGame[name] = value;
   }
 
+  newGame.url = window.location.origin;
   console.log('New Game', newGame);
 
   const headers = new Headers();
@@ -580,8 +582,7 @@ const enableGameOptions = () => {
 
 const clearGame = () => {
   getGameSection().innerHTML = '';
-  const url = new URL(window.location.href);
-  url.searchParams.delete('playGame');
+  const url = new URL(apiHost);
   window.history.pushState({ path: url.href }, document.title, url.href);
   disableGameOptions();
 };
@@ -609,8 +610,9 @@ const playGame = async (gameId) => {
     const qrcode = new QRCode(
       numberCell,
     );
-    console.log('Creating QR code', game.url);
-    game.url && qrcode.makeCode(game.url);
+    const qrCodeAddress = `${game.url}/register=${game.id}`
+    console.log('Creating QR code', qrCodeAddress);
+    game.url && qrcode.makeCode(qrCodeAddress);
     getSignupSection().classList.remove('d-none');
   }
 
@@ -1044,20 +1046,157 @@ const showAudienceResponses = () => {
   profileElement.appendChild(questionElement);
 };
 
+const registerForGame = async (gameId) => {
+  const template = document.getElementById('registration_template');
+  const templateClone = template.content.cloneNode(true);
+
+  const game = await fetchGame(gameId);
+  getGameSection().appendChild(templateClone);
+
+  const agreementBox = getGameSection().querySelector('#player_agreement');
+  const submitButton = getGameSection().querySelector('.btn-info');
+  const form = getGameSection().querySelector('form');
+  agreementBox.addEventListener('click', (e) => {
+    submitButton.disabled = !(e.target.checked)
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const formData = new FormData(form);
+    const newPlayer = {
+      name: formData.get('registration_name'),
+      number: formData.get('registration_number'),
+      agreement: formData.get('player_agreement') === 'on' ? true : false,
+      game: game.id,
+    }
+
+    const headers = new Headers();
+    headers.append('Content-Type', 'application/json');
+    return fetch(
+      `${apiHost}/players`,
+      {
+        method: 'POST',
+        body: JSON.stringify(newPlayer),
+        headers: headers,
+      },
+    )
+      .then((res) => res.json())
+      .then((game) => Promise.resolve((() => {
+        clearGameForm();
+        const queryParams = new URLSearchParams({'registration_thanks': true});
+        window.location.href = `?${queryParams.toString()}`;
+        // eslint-disable-next-line
+        Toastify({
+          text: 'You Registered!',
+          className: 'info',
+        }).showToast();
+        
+      })()));
+  });
+  hideSpinner();
+
+  // enableGameOptions();
+  // getGameSection().appendChild(gameClone);
+  // getGamePlayer().innerText = `Player: ${game?.player?.name || ''}`;
+  // displayScore();
+  // displayQuestion();
+
+  // const { numbers } = getCurrentGame();
+  // const numbersElement = document
+  //   .getElementById('numbers_table');
+
+  // const numberCell = document.getElementById('join_here');
+  // getSignupSection().classList.add('d-none');
+  // if (game.url) {
+  //   const qrcode = new QRCode(
+  //     numberCell,
+  //   );
+  //   const qrCodeAddress = `${game.url}/register=${game.id}`
+  //   console.log('Creating QR code', qrCodeAddress);
+  //   game.url && qrcode.makeCode(qrCodeAddress);
+  //   getSignupSection().classList.remove('d-none');
+  // }
+
+  // numbersElement.innerHTML = '';
+
+  // numbers?.forEach(({ countryName, country, number }) => {
+  //   const row = document.createElement('div');
+  //   const countryCell = document.createElement('div');
+
+  //   countryCell.innerText = countryName || country || '';
+  //   row.appendChild(countryCell);
+
+  //   const flag = new CountryFlag(countryCell);
+  //   flag.selectByAlpha2(`${country}`.toLowerCase());
+
+  //   const numberCell = document.createElement('div');
+  //   const qrcode = new QRCode(
+  //     numberCell,
+  //     {
+  //       height: 100,
+  //       width: 100,
+  //     },
+  //   );
+  //   qrcode.makeCode(`sms:${number}`);
+  //   numberCell.append(number);
+
+  //   row.appendChild(numberCell);
+  //   numbersElement.appendChild(row);
+  // });
+
+  // if (!game.player) {
+  //   showNoPlayer();
+  //   return;
+  // }
+}
+
+const thanksForRegistering = async (gameId) => {
+  const template = document.getElementById('registration_thanks_template');
+  const templateClone = template.content.cloneNode(true);
+
+  const game = await fetchGame(gameId);
+  getGameSection().appendChild(templateClone);
+  return;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
-  const gameId = urlParams.get('playGame');
 
-  window.jsConfetti = new JSConfetti();
+  if (urlParams.has('playGame')) {
+    const gameId = urlParams.get('playGame');
 
-  document.addEventListener('click', handelButtonClickEvent);
-  disableGameOptions();
-
-  if (gameId) {
-    playGame(gameId);
-    getGameListSection().classList.add('d-none');
-    return;
+    window.jsConfetti = new JSConfetti();
+  
+    document.addEventListener('click', handelButtonClickEvent);
+    disableGameOptions();
+  
+    if (gameId) {
+      playGame(gameId);
+      getGameListSection().classList.add('d-none');
+      return;
+    }
   }
+
+  if (urlParams.has('register')) {
+    const gameId = urlParams.get('register');
+    disableGameOptions();
+    if (gameId) {
+      registerForGame(gameId);
+      getGameListSection().classList.add('d-none');
+    }
+    return;
+  };
+
+  if (urlParams.has('register_thanks')) {
+    disableGameOptions();
+    const gameId = urlParams.get('register_thanks');
+    if (gameId) {
+      thanksForRegistering(gameId);
+    }
+    return;
+  };
 
   loadGames();
 });

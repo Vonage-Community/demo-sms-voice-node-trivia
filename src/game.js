@@ -9,7 +9,6 @@ import {
   sendMessage,
   getGameNumbers,
 } from './vonage.js';
-import { getAirtableSignups } from './airtable.js';
 
 import {
   saveGame,

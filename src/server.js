@@ -165,6 +165,14 @@ app.get('/games/:gameId', catchAsync(async (req, res) => {
   res.send(game);
 }));
 
+app.post('/players', catchAsync(async (req, res) => {
+  const { name, number, agreement, game } = req.body;
+  console.log(name, number, agreement, game);
+
+  const gameInfo = await getGame(game);
+  res.send(gameInfo);
+}));
+
 /**
  * Make an RPC call
  */

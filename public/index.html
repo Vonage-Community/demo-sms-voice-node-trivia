@@ -75,16 +75,6 @@
       </div>
 
       <div class="mb-3">
-        <label for="url">Sign up Form URL:</label>
-        <input type="url" name="url" required id="game_url"/>
-      </div>
-
-      <div class="mb-3">
-        <label for="game_title">AirTable Table ID:</label>
-        <input type="text" name="airtable" required id="game_airtable"/>
-      </div>
-
-      <div class="mb-3">
         <fieldset name="form_categories">
           <legend>Categories:</legend>
           <h6>Three categories are ideal for GPT</h6>
@@ -307,6 +297,39 @@
         </div>
       </div>
     </div>
+  </template>
+
+  <template id="registration_template">
+    <form name="game_settings">
+      <div class="mb-3">
+        <label for="registration_name">Your Name:</label>
+        <input type="text" id="registration_name" name="registration_name">
+      </div>
+
+      <div class="mb-3">
+        <label for="registration_number">Your Mobile Number:</label>
+        <input type="text" id="registration_number" name="registration_number">
+      </div>
+
+      <div class="mb-3"></div>
+        <input type="checkbox" name="player_agreement" required id="player_agreement"/>
+        <label for="player_agreement">I agree to the terms and conditions of this game HERE</label>
+      </div>
+
+      <div class="row p-3">
+        <div class="col-sm-12 d-grid">
+          <button class="ask btn btn-info" disabled>Submit Your Information</button>
+        </div>
+      </div>
+    </form>
+  </template>
+
+  <template id="registration_thanks_template">
+    <h2>Thanks for registering!</h2>
+
+    <p>
+      If you are selected to play, you will be called up on stage. Otherwise, you may get a call to help answer a question via "Ask a Dev."
+    </p>
   </template>
 
   <script src="https://cdn.jsdelivr.net/npm/@vonage/client-sdk@1.5.1/dist/vonageClientSDK.js"></script>
