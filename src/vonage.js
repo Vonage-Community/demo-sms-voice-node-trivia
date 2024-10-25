@@ -2,7 +2,7 @@ import debug from 'debug';
 import { Vonage } from '@vonage/server-sdk';
 import { SMS } from '@vonage/messages';
 import { tokenGenerate } from '@vonage/jwt';
-import { getVCRAuth, getVCRAppliationId, privateKey } from './vcr.js';
+import { getVCRAuth, getVCRAppliationId, getPrivateKey } from './vcr.js';
 import { saveGame } from './mongo.js';
 import dotenv from 'dotenv';
 
@@ -13,6 +13,39 @@ const FROM_NUMBER = process.env.FROM_NUMBER;
 
 export const vonage = new Vonage(getVCRAuth());
 
+export const getApplicationNumbers = async () => {
+  const numbers = await vonage.numbers.getOwnedNumbers({
+    applicationId: getVCRAppliationId(),
+  });
+
+  
+  if (Object.keys(numbers).length > 0) {
+    return numbers;
+  }
+
+  return [];
+}
+
+const numberInfoCache = {};
+export const getNumberInfo = async (country, msisdn) => {
+  const key = `${country}-${msisdn}`;
+
+  if (!numberInfoCache[key]) {
+    log(`Number ${msisdn} not found in cache, looking up`);
+    const resp = await vonage.numberInsights.basicLookup(msisdn, { country })
+    numberInfoCache[key] = {
+      country: resp.country,
+      countryName: resp.country_name,
+      msisdn: resp.msisdn,
+      number: `+${resp.country_prefix} ${resp.national_format_number}`,
+    }
+  }
+
+
+  log(`Number ${msisdn} is in ${numberInfoCache[key].countryName}`);
+  return numberInfoCache[key];
+}
+
 /**
  * Get the phone numbers linked to the vonage application
  *
@@ -21,33 +54,21 @@ export const vonage = new Vonage(getVCRAuth());
  */
 export const getGameNumbers = async (game) => {
   log(`Getting numbers for game: ${game.id} application: ${getVCRAppliationId()}`);
-  const numbers = await vonage.numbers.getOwnedNumbers({
-    applicationId: getVCRAppliationId(),
-  });
+  const numbers = getApplicationNumbers();  
 
-  log('Numbers fetched', numbers);
+  log('Numbers fetched from API', numbers);
   game.numbers = [];
-  game.numbers = await Promise.all(
-    numbers?.numbers?.map(
-      ({ country, msisdn }) => vonage.numberInsights.basicLookup(msisdn)
-      // eslint-disable-next-line
-        .then(({ country_name, country_prefix, national_format_number }) => {
+  if (Object.keys(numbers).length > 0) {
+    game.numbers = await Promise.all(
+      numbers?.numbers?.map(
+        async ({ country, msisdn }) => {
+          return await getNumberInfo(country, msisdn);
+        }
+      ),
+    );
+  }
 
-          // eslint-disable-next-line
-          log(`Number ${msisdn} is in ${country_name}`);
-          return {
-            country: country,
-            // eslint-disable-next-line
-            countryName: country_name,
-            msisdn: msisdn,
-            // eslint-disable-next-line
-            number: `+${country_prefix} ${national_format_number}`,
-          };
-        }),
-    ),
-  );
-
-  log('Numbers fetched', game.numbers);
+  log('Numbers fetched after filtering', game.numbers);
   await saveGame(game);
   return game.numbers;
 };
@@ -92,7 +113,7 @@ export const getJwt = async (game) => {
 
   game.jwt = tokenGenerate(
     getVCRAppliationId(),
-    privateKey,
+    getPrivateKey(),
     {
       sub: 'game_user',
       acl: {

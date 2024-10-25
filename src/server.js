@@ -2,10 +2,11 @@ import Express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { createGame, getGame } from './game.js';
-import { loadGames } from './mongo.js';
+import { insertPlayer, loadGames, mongoClient } from './mongo.js';
 import { Voice, Messages, vcr } from '@vonage/vcr-sdk';
 import { getVCRPort, isVCR } from './vcr.js';
 import debug from 'debug';
+import { getApplicationNumbers, getGameNumbers } from './vonage.js';
 
 process.env.VCR_PORT && debug.enable('*vonage.game*');
 
@@ -25,7 +26,7 @@ const onFallback = (req, res) => {
   res.sendStatus(200);
 };
 
-const answerCall = (req, res) => {
+const answerCall = async (req, res) => {
   log('Answer: ', req.body);
   let ncco = [
     {
@@ -35,6 +36,12 @@ const answerCall = (req, res) => {
   ];
 
   const username = req.body.to;
+  let from = process.env.FROM_NUMBER;
+  if (!from) {
+    const numbers = await getApplicationNumbers();
+    from = numbers.numbers.shift().msisdn;
+  }
+
   if (username) {
     ncco = [
       {
@@ -43,7 +50,7 @@ const answerCall = (req, res) => {
       },
       {
         'action': 'connect',
-        'from': process.env.FROM_NUMBER,
+        'from': from,
         'endpoint': [
           {
             'type': 'phone',
@@ -143,10 +150,10 @@ app.get('/games', catchAsync(async (_, res) => {
  * Create a game
  */
 app.post('/games', catchAsync(async (req, res) => {
-  const { title, url, categories, airtable } = req.body;
+  const { title, url, categories, game_tcs } = req.body;
   log(`Create game`);
 
-  const game = await createGame(title, url, categories, airtable);
+  const game = await createGame(title, url, categories, game_tcs);
   log('Game created');
 
   res.send(game);
@@ -167,7 +174,13 @@ app.get('/games/:gameId', catchAsync(async (req, res) => {
 
 app.post('/players', catchAsync(async (req, res) => {
   const { name, number, agreement, game } = req.body;
-  console.log(name, number, agreement, game);
+
+  const insertId = await insertPlayer({
+    name,
+    phone: number,
+    agreement,
+    game,
+  })
 
   const gameInfo = await getGame(game);
   res.send(gameInfo);

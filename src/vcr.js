@@ -5,6 +5,15 @@ export const privateKey = existsSync(process.env.VONAGE_PRIVATE_KEY)
   ? readFileSync(process.env.VONAGE_PRIVATE_KEY)
   : process.env.VONAGE_PRIVATE_KEY || process.env.VCR_PRIVATE_KEY;
 
+export const getPrivateKey = () => {
+  let key = privateKey;
+  if (!key.startsWith('---')) {
+    key = Buffer.from(privateKey, 'base64');
+  }
+
+  return key;
+}
+
 /**
  *
  * Checks if we are running in VCR
@@ -25,11 +34,7 @@ export const getVCRAuth = () => {
       || process.env.VCR_API_ACCOUNT_SECRET,
     applicationId: process.env.VONAGE_APPLICATION_ID
       || process.env.API_APPLICATION_ID,
-    privateKey: privateKey,
-  }
-
-  if (!data.privateKey.startsWith('---')) {
-    data.privateKey = Buffer.from(data.privateKey, 'base64');
+    privateKey: getPrivateKey(),
   }
 
   return new Auth(data);

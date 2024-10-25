@@ -1,6 +1,7 @@
 import { MongoClient } from 'mongodb';
 import debug from 'debug';
 import dotenv from 'dotenv';
+import { getApplicationNumbers, getNumberInfo } from './vonage.js';
 
 dotenv.config();
 
@@ -35,10 +36,13 @@ const getClient = () => {
       log('Database selected');
       const collection = database.collection('trivia');
       log('Collection selected');
+      const playerCollection = database.collection('players');
 
       cache = {
         database: database,
         collection: collection,
+        userCollection: playerCollection,
+        triviaCollection: collection,
         client: mongoClient,
       };
 
@@ -104,10 +108,21 @@ export const fetchGame = async (gameId) => {
   log(`Fetching game: ${gameId}`);
   const { collection } = await mongoClient();
   try {
-    const game = await collection.find({ _id: gameId }).toArray();
+    const games = await collection.find({ _id: gameId }).toArray();
+    const game = games[0];
+    const numbers = await getApplicationNumbers();
 
+    if (Object.keys(numbers).length > 0) {
+      game.numbers = await Promise.all(
+        numbers?.numbers?.map(
+          async ({ country, msisdn }) => {
+            return await getNumberInfo(country, msisdn);
+          }
+        ),
+      );
+    }
     log('Game loaded');
-    return game[0];
+    return game;
   } catch (e) {
     log(`Failed to load game: ${gameId}`);
     log(e);
@@ -136,3 +151,44 @@ export const saveGame = async (game) => {
   }
 };
 
+export const insertPlayer = async (data) => {
+  const { userCollection } = await mongoClient();
+  const result = await userCollection.insertOne(data);
+
+  return result.insertedId;
+}
+
+/**
+ * @deprecated Use `getSignups` instead
+ * @param {*} game 
+ * @returns 
+ */
+export const getAirtableSignups = async (game) => {
+  return await getSignups(game);
+};
+
+export const getSignups = async (game) => {
+  log('Finding particapants');
+  const { userCollection } = await mongoClient();
+  const records = await userCollection.find({ game: game.id }).toArray();
+
+  log('Records fetched');
+  game.particapants = [];
+  for (const row of records) {
+    game.particapants.push({
+      name: row.name,
+      phone: row.phone,
+      last_status: 'unknown',
+    });
+  }
+
+  // remove the player
+  game.particapants = game.particapants.filter(
+    ({ phone }) => phone !== game?.player?.phone,
+  );
+
+  log('Particapants', game.particapants);
+  log(`Player`, game.player);
+
+  return game;
+}
