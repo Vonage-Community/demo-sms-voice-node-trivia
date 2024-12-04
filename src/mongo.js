@@ -114,7 +114,7 @@ export const fetchGame = async (gameId) => {
 
     if (Object.keys(numbers).length > 0) {
       game.numbers = await Promise.all(
-        numbers?.numbers?.map(
+        (numbers?.numbers || []).map(
           async ({ country, msisdn }) => {
             return await getNumberInfo(country, msisdn);
           }
