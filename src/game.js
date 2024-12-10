@@ -9,12 +9,13 @@ import {
   sendMessage,
   getGameNumbers,
 } from './vonage.js';
-import { getAirtableSignups } from './airtable.js';
 
 import {
   saveGame,
   fetchGame,
   updateAudienceChoice,
+  getSignups,
+  getAirtableSignups,
 } from './mongo.js';
 import dotenv from 'dotenv';
 
@@ -264,7 +265,7 @@ const phoneADev = async (game) => {
   await game.getJwt();
   await getAirtableSignups(game);
 
-  if (game.particapants.length < 2) {
+  if (game.particapants.length < 1) {
     throw new Error('Not enough particapants to phone a friend');
   }
 
@@ -438,7 +439,7 @@ export const createGame = async (
   title,
   url,
   categories,
-  airtable,
+  game_tcs,
 ) => {
   log(`Creating new game ${title}`, categories);
 
@@ -447,8 +448,8 @@ export const createGame = async (
     id: makeId(8),
     title: title,
     url: url,
-    airtable: airtable,
     categories: categories,
+    game_tcs: game_tcs,
     questions: {},
     messages: [],
     point_scale: pointScale,
@@ -486,6 +487,7 @@ export const createGame = async (
 
 const findPlayer = async (game) => {
   await getAirtableSignups(game);
+  await getSignups(game);
 
   log('setting player');
   game.player = game.particapants.sort(() => 0.5 - Math.random())[0];
@@ -521,6 +523,7 @@ const fillGame = (game) =>
  */
 export const getGame = async (gameId) => {
   const game = await fetchGame(gameId);
+
   log('Filling game');
   return fillGame(game);
 };

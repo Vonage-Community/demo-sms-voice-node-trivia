@@ -1,4 +1,5 @@
-const apiHost = `${location.protocol}//${location.host || 'localhost'}`;
+// const apiHost = `${location.protocol}//${location.host || 'localhost'}`;
+const apiHost = window.location.origin;
 
 const CONFETTI_ARGS = [
   {},
@@ -89,6 +90,10 @@ const clearGameForm = () => {
   getGameFormSection().classList.add('d-none');
 };
 
+const clearRegistrationForm = () => {
+  getRegistrationFormSection().innerHTML = '';
+}
+
 const submitForm = async () => {
   console.log('Submit Form');
   const gameForm = getGameForm();
@@ -98,6 +103,7 @@ const submitForm = async () => {
     url: null,
     airtable: null,
     categories: [],
+    game_tcs: null,
   };
 
   for (const [name, value] of data.entries()) {
@@ -114,6 +120,7 @@ const submitForm = async () => {
     newGame[name] = value;
   }
 
+  newGame.url = window.location.origin;
   console.log('New Game', newGame);
 
   const headers = new Headers();
@@ -483,6 +490,8 @@ const getAnswerButton = () => getChoicesSection()
 
 const getGameSection = () => document.getElementById('game');
 
+const getRegistrationFormSection = () => document.getElementById('registration-form');
+
 const getChoiceButtons = () => getChoicesSection()
   .querySelectorAll('button.choice');
 
@@ -580,8 +589,7 @@ const enableGameOptions = () => {
 
 const clearGame = () => {
   getGameSection().innerHTML = '';
-  const url = new URL(window.location.href);
-  url.searchParams.delete('playGame');
+  const url = new URL(apiHost);
   window.history.pushState({ path: url.href }, document.title, url.href);
   disableGameOptions();
 };
@@ -609,8 +617,9 @@ const playGame = async (gameId) => {
     const qrcode = new QRCode(
       numberCell,
     );
-    console.log('Creating QR code', game.url);
-    game.url && qrcode.makeCode(game.url);
+    const qrCodeAddress = `${game.url}/?register=${game.id}`
+    console.log('Creating QR code', qrCodeAddress);
+    game.url && qrcode.makeCode(qrCodeAddress);
     getSignupSection().classList.remove('d-none');
   }
 
@@ -872,8 +881,14 @@ const findPlayer = async () => {
 
 const handelButtonClickEvent = (event) => {
   const { target } = event;
+  console.log(target);
 
-  if (target.tagName === 'A') {
+  // Handle web components
+  if (target.tagName.includes('-')) {
+    return;
+  }
+
+  if (target.tagName === 'A' || target.tagName === 'INPUT') {
     console.log('Link clicked');
     return;
   }
@@ -976,6 +991,12 @@ const handelButtonClickEvent = (event) => {
     textTheAudience();
     return;
   }
+
+  if (target.classList.contains('submit-registration')) {
+    console.log('Submitting registration');
+    submitRegistration();
+    return;
+  }
 };
 
 const textTheAudience = () => {
@@ -1044,20 +1065,64 @@ const showAudienceResponses = () => {
   profileElement.appendChild(questionElement);
 };
 
+const registerForGame = async (gameId) => {
+  const game = await fetchGame(gameId);
+  hideSpinner();
+
+  const template = document.getElementById('registration_template');
+  const templateClone = template.content.cloneNode(true);
+  const registrationForm = templateClone.querySelector('registration-form');
+  registrationForm.setAttribute('game_tcs', 'https://ctankersley.com');
+  
+  clearGameForm();
+  getRegistrationFormSection().appendChild(templateClone);
+}
+
+const thanksForRegistering = async (gameId) => {
+  const template = document.getElementById('registration_thanks_template');
+  const templateClone = template.content.cloneNode(true);
+
+  getRegistrationFormSection().appendChild(templateClone);
+  return;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
-  const gameId = urlParams.get('playGame');
-
-  window.jsConfetti = new JSConfetti();
-
   document.addEventListener('click', handelButtonClickEvent);
-  disableGameOptions();
 
-  if (gameId) {
-    playGame(gameId);
-    getGameListSection().classList.add('d-none');
-    return;
+  if (urlParams.has('playGame')) {
+    const gameId = urlParams.get('playGame');
+
+    window.jsConfetti = new JSConfetti();
+  
+    disableGameOptions();
+  
+    if (gameId) {
+      playGame(gameId);
+      getGameListSection().classList.add('d-none');
+      return;
+    }
   }
+
+  if (urlParams.has('register')) {
+    const gameId = urlParams.get('register');
+    disableGameOptions();
+    if (gameId) {
+      registerForGame(gameId);
+      getGameListSection().classList.add('d-none');
+    }
+    return;
+  };
+
+  if (urlParams.has('register_thanks')) {
+    disableGameOptions();
+    const gameId = urlParams.get('register_thanks');
+    if (gameId) {
+      thanksForRegistering(gameId);
+      getGameListSection().classList.add('d-none');
+    }
+    return;
+  };
 
   loadGames();
 });
