@@ -1072,7 +1072,7 @@ const registerForGame = async (gameId) => {
   const template = document.getElementById('registration_template');
   const templateClone = template.content.cloneNode(true);
   const registrationForm = templateClone.querySelector('registration-form');
-  registrationForm.setAttribute('game_tcs', 'https://ctankersley.com');
+  registrationForm.setAttribute('game_tcs', game.game_tcs);
   
   clearGameForm();
   getRegistrationFormSection().appendChild(templateClone);
